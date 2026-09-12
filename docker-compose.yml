@@ -1,0 +1,90 @@
+version: '3.8'
+
+# LingMa Novel Studio - Docker Compose
+# 一键启动所有服务
+
+services:
+  # ==================== Backend ====================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lingma-backend
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./data/works:/app/data/works
+      - ./data/vector_store:/app/data/vector_store
+      - ./data/logs:/app/data/logs
+      - ./.env:/app/.env:ro
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/works/lingma.db
+      - VECTOR_STORE_PATH=/app/data/vector_store
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - APP_ENV=${APP_ENV:-production}
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ==================== Frontend ====================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE=${VITE_API_BASE:-/api/v1}
+    container_name: lingma-frontend
+    ports:
+      - "${FRONTEND_PORT:-7860}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==================== Redis (可选 - 用于任务队列) ====================
+  redis:
+    image: redis:7-alpine
+    container_name: lingma-redis
+    profiles: ["with-redis"]  # 仅在指定时启动
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ==================== Ollama (可选 - 本地 LLM) ====================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: lingma-ollama
+    profiles: ["with-ollama"]  # 仅在指定时启动
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  ollama_data:
+
+# ==================== 网络 ====================
+networks:
+  default:
+    name: lingma-network
+    driver: bridge

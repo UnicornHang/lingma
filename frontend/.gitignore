@@ -1,0 +1,71 @@
+# Frontend specific ignores (lingma-frontend)
+# 根 .gitignore 已覆盖大部分规则,此处补充 frontend 特定项。
+
+# 依赖
+node_modules/
+node_modules_old/
+.pnp
+.pnp.js
+.pnpm-store/
+
+# 构建产物
+dist/
+dist-ssr/
+build/
+*.local
+*.tsbuildinfo
+
+# 框架缓存
+.vite/
+.cache/
+.eslintcache
+.parcel-cache/
+.next/
+.nuxt/
+.turbo/
+
+# 测试
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+playwright/.cache/
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 临时
+tmp/
+temp/
+*.tmp
+*.bak
+
+# 不忽略锁文件 (依赖可复现)
+# !package-lock.json

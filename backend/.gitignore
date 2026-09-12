@@ -1,0 +1,77 @@
+# Backend specific ignores (lingma-backend)
+# 根 .gitignore 已覆盖大部分规则,此处补充 backend 特定项。
+
+# 虚拟环境
+.venv/
+venv/
+env/
+.python-version
+
+# 字节码与缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+
+# 构建
+build/
+dist/
+*.whl
+
+# 测试 / 覆盖率
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+coverage.xml
+coverage/
+
+# 类型 / Lint
+.mypy_cache/
+.dmypy.json
+dmypy-report.txt
+.ruff_cache/
+.black/
+
+# 数据 / 运行时产物
+data/works/*.db
+data/works/*.sqlite
+data/works/*.sqlite3
+data/vector_store/
+data/logs/
+data/uploads/
+data/cache/
+data/tmp/
+
+# 日志
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 临时
+tmp/
+temp/
+*.tmp
+*.bak
+
+# 不忽略锁文件 (poetry 依赖可复现)
+# !poetry.lock

@@ -1,0 +1,181 @@
+# ============================================================
+# LingMa Novel Studio - Root .gitignore
+# ============================================================
+# 依赖库、构建产物、运行时数据、IDE 配置、临时文件等不提交。
+# 锁文件 (poetry.lock / package-lock.json) 应当提交以保证可复现构建。
+
+# ----------------------------------------------------------------
+# Python (backend)
+# ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+.python-version
+
+# 测试 / 覆盖率
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+coverage.xml
+coverage/
+
+# 类型检查 / Lint
+.mypy_cache/
+.dmypy.json
+dmypy-report.txt
+.ruff_cache/
+.black/
+
+# 构建产物
+build/
+dist/
+*.tsbuildinfo
+
+# ----------------------------------------------------------------
+# Node (frontend)
+# ----------------------------------------------------------------
+node_modules/
+node_modules_old/
+.pnpm-store/
+.pnp
+.pnp.js
+
+# 构建产物
+dist/
+dist-ssr/
+build/
+*.local
+
+# 框架缓存
+.vite/
+.cache/
+.eslintcache
+.parcel-cache/
+.next/
+.nuxt/
+.turbo/
+.svelte-kit/
+.angular/
+
+# 测试
+.nyc_output/
+playwright-report/
+test-results/
+playwright/.cache/
+
+# ----------------------------------------------------------------
+# 环境变量与密钥
+# ----------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 例外：保留示例文件
+!.env.example
+!.env.development
+!.env.test
+
+# ----------------------------------------------------------------
+# 数据 / 运行时产物 (仅保留目录结构)
+# ----------------------------------------------------------------
+data/works/*
+data/vector_store/*
+data/logs/*
+data/uploads/*
+data/cache/*
+data/exports/*
+data/snapshots/*
+data/tmp/*
+!data/**/.gitkeep
+!data/**/*.gitkeep
+
+# 备份
+backups/
+
+# 日志
+*.log
+logs/
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# ----------------------------------------------------------------
+# 临时 / 设计稿截图
+# ----------------------------------------------------------------
+.figma-*.png
+.figma-*.jpg
+.tmp/
+tmp/
+temp/
+
+# ----------------------------------------------------------------
+# IDE / 编辑器
+# ----------------------------------------------------------------
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+.claude/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+Thumbs.db
+
+# ----------------------------------------------------------------
+# Docker
+# ----------------------------------------------------------------
+docker-compose.override.yml.local
+Dockerfile.*.local
+
+# ----------------------------------------------------------------
+# 其他
+# ----------------------------------------------------------------
+*.bak
+*.tmp
+*.orig
+*.rej
+*.sublime-project
+*.sublime-workspace
+.history/
+
+# 不忽略锁文件 (用于可复现构建)
+# !poetry.lock
+# !package-lock.json
