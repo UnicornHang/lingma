@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Input, Button } from 'antd';
 import {
   Search,
   BookOpen,
@@ -60,20 +61,18 @@ export default function HelpPage() {
 
         {/* Search bar */}
         <div className="surface-card p-6 flex flex-col gap-3">
-          <div className="flex items-center px-3 h-12 rounded-lg border border-outline-variant/50 bg-surface-container-lowest">
-            <Search size={20} className="text-outline" />
-            <input
-              placeholder="搜索文档：比如「API 配置」「角色档案」「批量替换」..."
-              className="flex-1 outline-none ml-3 bg-transparent text-body-md text-on-surface"
-            />
-            <span className="font-code-sm text-outline px-2 py-0.5 rounded bg-surface-container">⌘ K</span>
-          </div>
+          <Input
+            size="large"
+            prefix={<Search size={20} className="text-outline" />}
+            placeholder="搜索文档：比如「API 配置」「角色档案」「批量替换」..."
+            suffix={<span className="font-code-sm text-outline px-2 py-0.5 rounded bg-surface-container">⌘ K</span>}
+          />
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-label-sm text-on-surface-variant">热门：</span>
             {['配置 LLM', '新建作品', 'Writer 续写', '批量替换', '导出 Markdown', '备份与恢复'].map((t) => (
-              <button key={t} className="px-3 py-1 rounded-full bg-surface-container-low text-on-surface-variant text-label-md hover:bg-primary-fixed hover:text-on-primary-container">
+              <Button key={t} type="default" shape="round" size="small">
                 {t}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -83,12 +82,12 @@ export default function HelpPage() {
           {CATEGORIES.map((c) => {
             const active = c.key === activeCat;
             return (
-              <button
+              <Button
                 key={c.key}
+                type="default"
                 onClick={() => setActiveCat(c.key)}
-                className={`p-6 rounded-xl flex flex-col items-start gap-3 text-left ${
-                  active ? 'surface-card-active' : 'surface-card hover:border-primary-container'
-                }`}
+                className={`!h-auto !p-6 !rounded-xl !text-left ${active ? 'surface-card-active' : 'surface-card hover:!border-primary-container'}`}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 12 }}
               >
                 <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${active ? 'bg-primary text-white' : 'bg-primary-container text-primary'}`}>
                   <c.icon size={26} />
@@ -102,7 +101,7 @@ export default function HelpPage() {
                     {c.key === 'community' && '5,000+ 用户社区 + GitHub + Discord'}
                   </span>
                 </div>
-              </button>
+              </Button>
             );
           })}
         </section>
@@ -141,16 +140,25 @@ export default function HelpPage() {
               const open = openIdx === i;
               return (
                 <div key={i} className="border-b border-outline-variant/20 last:border-b-0">
-                  <button
+                  <Button
+                    type="text"
+                    block
                     onClick={() => setOpenIdx(open ? null : i)}
-                    className="w-full flex items-center justify-between py-3 text-left"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 0',
+                      height: 'auto',
+                      textAlign: 'left',
+                    }}
                   >
                     <span className="text-label-md text-on-surface font-semibold">{f.q}</span>
                     <ChevronRight
                       size={18}
                       className={`text-outline transition-transform ${open ? 'rotate-90' : ''}`}
                     />
-                  </button>
+                  </Button>
                   {open && (
                     <p className="text-body-sm text-on-surface-variant pb-3">
                       {f.a}

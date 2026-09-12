@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Empty, Spin, App, Button } from 'antd';
+import { Empty, Spin, App, Button, Space } from 'antd';
 import {
   Plus,
   LayoutGrid,
@@ -214,14 +214,10 @@ export default function WorksListPage() {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1 p-1 bg-surface-container-low rounded-lg">
-            <button className="px-3 py-1.5 rounded bg-surface-container-lowest text-on-surface text-label-md shadow-sm flex items-center gap-1">
-              <LayoutGrid size={16} />网格
-            </button>
-            <button className="px-3 py-1.5 rounded text-on-surface-variant text-label-md hover:bg-surface-container-highest flex items-center gap-1">
-              <ListIcon size={16} />列表
-            </button>
-          </div>
+          <Space.Compact>
+            <Button type="default" icon={<LayoutGrid size={16} />}>网格</Button>
+            <Button type="text" icon={<ListIcon size={16} />}>列表</Button>
+          </Space.Compact>
           <Link to="/works/new">
             <Button type="primary" icon={<Plus size={16} />}>
               新建作品
@@ -233,29 +229,27 @@ export default function WorksListPage() {
       {/* Filter bar */}
       <div className="flex items-center justify-between px-8 pb-4">
         <div className="flex items-center gap-2">
-          <button className="px-3 py-1.5 rounded-full bg-primary-container text-on-primary-container text-label-md font-semibold flex items-center gap-1">
-            全部 <span className="font-code-sm">{demoWorks.length}</span>
-          </button>
-          <button className="px-3 py-1.5 rounded-full bg-surface-container text-on-surface-variant text-label-md border border-outline-variant/40">
-            连载中 <span className="font-code-sm">3</span>
-          </button>
-          <button className="px-3 py-1.5 rounded-full bg-surface-container text-on-surface-variant text-label-md border border-outline-variant/40">
-            已完结 <span className="font-code-sm">1</span>
-          </button>
-          <button className="px-3 py-1.5 rounded-full bg-surface-container text-on-surface-variant text-label-md border border-outline-variant/40">
-            草稿 <span className="font-code-sm">1</span>
-          </button>
-          <button className="px-3 py-1.5 rounded-full bg-surface-container text-on-surface-variant text-label-md border border-outline-variant/40">
-            <Star size={14} className="inline mr-1" />收藏
-          </button>
+          <Button type="primary" shape="round">
+            全部 <span className="font-code-sm ml-1">{demoWorks.length}</span>
+          </Button>
+          <Button type="default" shape="round">
+            连载中 <span className="font-code-sm ml-1">3</span>
+          </Button>
+          <Button type="default" shape="round">
+            已完结 <span className="font-code-sm ml-1">1</span>
+          </Button>
+          <Button type="default" shape="round">
+            草稿 <span className="font-code-sm ml-1">1</span>
+          </Button>
+          <Button type="default" shape="round" icon={<Star size={14} />}>
+            收藏
+          </Button>
         </div>
-        <div className="flex items-center px-3 h-9 rounded-lg border border-outline-variant/50 bg-surface-container-lowest">
-          <Filter size={18} className="text-outline" />
-          <span className="ml-2 text-body-md text-on-surface-variant">
-            排序：最近编辑
-          </span>
-          <ChevronDown size={18} className="ml-2 text-outline" />
-        </div>
+        <Button type="text">
+          <Filter size={18} />
+          <span className="ml-2">排序：最近编辑</span>
+          <ChevronDown size={18} className="ml-2" />
+        </Button>
       </div>
 
       {/* Grid */}

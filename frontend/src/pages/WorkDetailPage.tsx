@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Empty, Spin, App as AntApp } from 'antd';
+import { Empty, Spin, App as AntApp, Button } from 'antd';
 import {
   BookOpen,
   FileText,
@@ -118,31 +118,60 @@ export default function WorkDetailPage() {
             <p className="text-body-lg text-white/80 max-w-2xl">
               {work.logline || '（暂无简介）'}
             </p>
-            <div className="flex items-center gap-4 mt-2">
-              <Link
-                to={firstChapterId ? `/editor/${firstChapterId}` : '/editor'}
-                className={`flex items-center gap-2 px-6 py-3 bg-white text-primary rounded-lg text-label-md font-semibold hover:opacity-90 ${!firstChapterId ? 'pointer-events-none opacity-60' : ''}`}
-              >
-                <FileText size={20} />
-                <span>打开编辑器</span>
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <Link to={firstChapterId ? `/editor/${firstChapterId}` : '/editor'}>
+                <Button
+                  type="default"
+                  size="large"
+                  icon={<FileText size={18} />}
+                  disabled={!firstChapterId}
+                  style={{
+                    background: 'white',
+                    color: '#047857',
+                    borderColor: 'white',
+                    fontWeight: 600,
+                  }}
+                >
+                  打开编辑器
+                </Button>
               </Link>
-              <Link
-                to={`/works/${id}/outline`}
-                className="flex items-center gap-2 px-6 py-3 bg-white/10 backdrop-blur text-white border border-white/30 rounded-lg text-label-md font-medium"
-              >
-                <Network size={20} />
-                <span>查看大纲</span>
+              <Link to={`/works/${id}/outline`}>
+                <Button
+                  type="default"
+                  size="large"
+                  icon={<Network size={18} />}
+                  style={{
+                    background: 'rgba(255,255,255,0.1)',
+                    color: 'white',
+                    borderColor: 'rgba(255,255,255,0.3)',
+                    backdropFilter: 'blur(8px)',
+                  }}
+                >
+                  查看大纲
+                </Button>
               </Link>
-              <Link
-                to={`/works/${id}/characters`}
-                className="flex items-center gap-2 px-6 py-3 bg-white/10 backdrop-blur text-white border border-white/30 rounded-lg text-label-md font-medium"
-              >
-                <Users size={20} />
-                <span>角色</span>
+              <Link to={`/works/${id}/characters`}>
+                <Button
+                  type="default"
+                  size="large"
+                  icon={<Users size={18} />}
+                  style={{
+                    background: 'rgba(255,255,255,0.1)',
+                    color: 'white',
+                    borderColor: 'rgba(255,255,255,0.3)',
+                    backdropFilter: 'blur(8px)',
+                  }}
+                >
+                  角色
+                </Button>
               </Link>
-              <button className="ml-auto">
-                <MoreHorizontal size={28} className="text-white" />
-              </button>
+              <Button
+                type="text"
+                shape="circle"
+                icon={<MoreHorizontal size={24} />}
+                style={{ marginLeft: 'auto', color: 'white' }}
+                aria-label="更多操作"
+              />
             </div>
           </div>
         </section>

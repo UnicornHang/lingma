@@ -103,11 +103,10 @@ export default function OutlinePage() {
     <div className="w-full h-full overflow-y-auto bg-surface-container-low">
       <div className="p-8 flex flex-col gap-6 max-w-4xl mx-auto">
         <div className="flex items-center justify-between">
-          <Link
-            to={`/works/${workId}`}
-            className="inline-flex items-center gap-1 text-on-surface-variant hover:text-on-surface text-label-md"
-          >
-            <ArrowLeft size={16} /> 返回作品
+          <Link to={`/works/${workId}`}>
+            <Button type="text" icon={<ArrowLeft size={16} />}>
+              返回作品
+            </Button>
           </Link>
           <Button type="primary" icon={<Plus size={16} />} onClick={() => openCreate()}>
             新增卷/章
@@ -214,9 +213,13 @@ function OutlineRow({
         className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-container group"
         style={{ paddingLeft: `${depth * 24 + 8}px` }}
       >
-        <button onClick={() => onToggle(node.id)} className="text-outline">
-          {hasChildren ? (isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />) : <span className="w-4" />}
-        </button>
+        <Button
+          type="text"
+          shape="circle"
+          size="small"
+          onClick={() => onToggle(node.id)}
+          icon={hasChildren ? (isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />) : <span className="w-4" />}
+        />
         {node.type === 'volume' && <Sparkles size={16} className="text-primary" />}
         {node.type === 'chapter' && <FileText size={16} className="text-tertiary" />}
         {node.type === 'beat' && <span className="w-4 h-4 rounded-full bg-outline/40" />}
@@ -225,20 +228,23 @@ function OutlineRow({
           目标 {node.target_word_count.toLocaleString()} 字
         </span>
         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-          <button
+          <Button
+            type="text"
+            shape="circle"
+            size="small"
             onClick={() => onAddChild(node)}
-            className="p-1 rounded text-outline hover:text-primary hover:bg-primary-container"
+            icon={<Plus size={14} />}
             title="新增子节点"
-          >
-            <Plus size={14} />
-          </button>
-          <button
+          />
+          <Button
+            type="text"
+            shape="circle"
+            size="small"
+            danger
             onClick={() => onDelete(node.id)}
-            className="p-1 rounded text-outline hover:text-error hover:bg-error-container"
+            icon={<Trash2 size={14} />}
             title="删除"
-          >
-            <Trash2 size={14} />
-          </button>
+          />
         </div>
       </div>
       {hasChildren && isExpanded && (

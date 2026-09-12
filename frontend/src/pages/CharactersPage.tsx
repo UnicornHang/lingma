@@ -100,11 +100,10 @@ export default function CharactersPage() {
     <div className="w-full h-full overflow-y-auto bg-surface-container-low">
       <div className="p-8 flex flex-col gap-6 max-w-6xl mx-auto">
         <div className="flex items-center justify-between">
-          <Link
-            to={`/works/${workId}`}
-            className="inline-flex items-center gap-1 text-on-surface-variant hover:text-on-surface text-label-md"
-          >
-            <ArrowLeft size={16} /> 返回作品
+          <Link to={`/works/${workId}`}>
+            <Button type="text" icon={<ArrowLeft size={16} />}>
+              返回作品
+            </Button>
           </Link>
           <Button type="primary" icon={<Plus size={16} />} onClick={openCreate}>
             新增角色
@@ -120,15 +119,14 @@ export default function CharactersPage() {
         </div>
 
         {/* 搜索栏 */}
-        <div className="flex items-center px-3 h-9 rounded-lg border border-outline-variant/50 bg-surface-container-lowest w-72">
-          <Search size={18} className="text-outline" />
-          <input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="按名称筛选"
-            className="flex-1 outline-none ml-2 bg-transparent text-body-md text-on-surface"
-          />
-        </div>
+        <Input
+          allowClear
+          prefix={<Search size={18} className="text-outline" />}
+          placeholder="按名称筛选"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          className="!w-72"
+        />
 
         {filtered.length === 0 ? (
           <Empty description="该作品还没有角色档案" />
@@ -203,19 +201,17 @@ function CharacterCard({ character, onDelete }: { character: Character; onDelete
           <span className={`${chip} w-fit`}>{roleLabel}</span>
         </div>
         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-          <button className="p-1 text-outline hover:text-on-surface" title="编辑">
-            <Edit size={14} />
-          </button>
-          <button
+          <Button type="text" shape="circle" size="small" icon={<Edit size={14} />} title="编辑" />
+          <Button
+            type="text"
+            shape="circle"
+            size="small"
+            danger
+            icon={<Trash2 size={14} />}
             onClick={onDelete}
-            className="p-1 text-outline hover:text-error"
             title="删除"
-          >
-            <Trash2 size={14} />
-          </button>
-          <button className="p-1 text-outline" title="更多">
-            <MoreHorizontal size={14} />
-          </button>
+          />
+          <Button type="text" shape="circle" size="small" icon={<MoreHorizontal size={14} />} title="更多" />
         </div>
       </div>
 

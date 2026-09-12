@@ -62,11 +62,10 @@ export default function WorldBiblePage() {
     <div className="w-full h-full overflow-y-auto bg-surface-container-low">
       <div className="p-8 flex flex-col gap-6 max-w-5xl mx-auto">
         <div className="flex items-center justify-between">
-          <Link
-            to={`/works/${workId}`}
-            className="inline-flex items-center gap-1 text-on-surface-variant hover:text-on-surface text-label-md"
-          >
-            <ArrowLeft size={16} /> 返回作品
+          <Link to={`/works/${workId}`}>
+            <Button type="text" icon={<ArrowLeft size={16} />}>
+              返回作品
+            </Button>
           </Link>
           <Button
             type="primary"

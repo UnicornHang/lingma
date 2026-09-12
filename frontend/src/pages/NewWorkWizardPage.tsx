@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { App } from 'antd';
+import { App, Button, Input, Space } from 'antd';
 import {
   X,
   BookOpen,
@@ -163,14 +163,14 @@ export default function NewWorkWizardPage() {
               第 {step + 1} 步 / 共 {STEPS.length} 步 · {STEPS[step].label}
             </p>
           </div>
-          <button
-            type="button"
+          <Button
+            type="text"
+            shape="circle"
+            icon={<X size={24} />}
             onClick={() => navigate('/works')}
             disabled={submitting}
-            className="text-outline hover:text-on-surface disabled:opacity-40"
-          >
-            <X size={24} />
-          </button>
+            aria-label="关闭向导"
+          />
         </div>
 
         {/* Stepper */}
@@ -232,17 +232,18 @@ export default function NewWorkWizardPage() {
                   {GENRES.map((g) => {
                     const checked = genre.has(g.key);
                     return (
-                      <button
+                      <Button
                         key={g.key}
-                        type="button"
+                        type="default"
                         onClick={() => toggleGenre(g.key)}
-                        className={`p-4 rounded-xl border-2 cursor-pointer flex flex-col gap-2 text-left transition-colors ${
+                        className={`!h-auto !p-4 !rounded-xl !text-left !border-2 ${
                           checked
-                            ? 'border-primary bg-primary-container'
-                            : 'border-outline-variant/40 bg-surface-container-lowest hover:border-primary-container'
+                            ? '!border-primary !bg-primary-container'
+                            : '!border-outline-variant/40 !bg-surface-container-lowest hover:!border-primary-container'
                         }`}
+                        style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
                       >
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between w-full">
                           <g.Icon
                             size={28}
                             className={checked ? 'text-primary' : 'text-outline'}
@@ -257,7 +258,7 @@ export default function NewWorkWizardPage() {
                           {g.label}
                         </span>
                         <span className="text-body-sm text-on-surface-variant">{g.desc}</span>
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
@@ -266,27 +267,24 @@ export default function NewWorkWizardPage() {
               <div className="grid grid-cols-2 gap-6">
                 <div className="flex flex-col gap-3">
                   <h3 className="text-headline-sm font-semibold text-on-surface">受众定位</h3>
-                  <div className="flex items-center gap-1 p-1 bg-surface-container-low rounded-lg">
+                  <Space.Compact className="!w-full">
                     {(['male', 'female', 'all'] as const).map((k) => (
-                      <button
+                      <Button
                         key={k}
-                        type="button"
+                        type={audience === k ? 'primary' : 'default'}
+                        ghost={audience === k}
+                        block
                         onClick={() => setAudience(k)}
-                        className={`flex-1 py-2 rounded text-label-md ${
-                          audience === k
-                            ? 'bg-primary-container text-on-primary-container font-semibold'
-                            : 'text-on-surface-variant hover:bg-surface-container-highest'
-                        }`}
                       >
                         {k === 'male' ? '男频' : k === 'female' ? '女频' : '不限'}
-                      </button>
+                      </Button>
                     ))}
-                  </div>
+                  </Space.Compact>
                   <div className="flex flex-col gap-2 mt-2">
                     <label className="text-label-md text-on-surface">读者画像</label>
-                    <textarea
+                    <Input.TextArea
+                      rows={4}
                       defaultValue="15-35 岁男性读者，热衷爽文节奏与修炼升级，期待清晰的目标—冲突—收获循环。"
-                      className="h-24 px-3 py-2 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface resize-none focus:outline-none focus:border-primary-container"
                     />
                   </div>
                 </div>
@@ -295,41 +293,36 @@ export default function NewWorkWizardPage() {
                   <h3 className="text-headline-sm font-semibold text-on-surface">节奏与字数</h3>
                   <div className="flex flex-col gap-1">
                     <label className="text-label-sm text-on-surface-variant">章节目标字数</label>
-                    <div className="flex items-center px-3 h-9 rounded-lg border border-outline-variant/50 bg-surface-container-lowest font-code-md text-code-md">
-                      <Hash size={18} className="text-outline" />
-                      <input
-                        value={chapterWords}
-                        onChange={(e) => setChapterWords(e.target.value)}
-                        className="flex-1 outline-none ml-2 bg-transparent font-code-md text-code-md"
-                      />
-                    </div>
+                    <Input
+                      prefix={<Hash size={18} className="text-outline" />}
+                      value={chapterWords}
+                      onChange={(e) => setChapterWords(e.target.value)}
+                      className="!font-code-md"
+                    />
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-label-sm text-on-surface-variant">作品目标总字数</label>
-                    <div className="flex items-center px-3 h-9 rounded-lg border border-outline-variant/50 bg-surface-container-lowest font-code-md text-code-md">
-                      <Flag size={18} className="text-outline" />
-                      <input
-                        value={targetTotal}
-                        onChange={(e) => setTargetTotal(e.target.value)}
-                        className="flex-1 outline-none ml-2 bg-transparent font-code-md text-code-md"
-                      />
-                    </div>
+                    <Input
+                      prefix={<Flag size={18} className="text-outline" />}
+                      value={targetTotal}
+                      onChange={(e) => setTargetTotal(e.target.value)}
+                      className="!font-code-md"
+                    />
                   </div>
-                  <div className="flex items-center gap-1 p-1 bg-surface-container-low rounded-lg mt-2">
-                    {(['slow', 'balanced', 'fast'] as const).map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setPace(p)}
-                        className={`flex-1 py-2 rounded text-label-md ${
-                          pace === p
-                            ? 'bg-primary-container text-on-primary-container font-semibold'
-                            : 'text-on-surface-variant hover:bg-surface-container-highest'
-                        }`}
-                      >
-                        {p === 'slow' ? '慢热' : p === 'balanced' ? '均衡' : '快节奏'}
-                      </button>
-                    ))}
+                  <div className="mt-2">
+                    <Space.Compact className="!w-full">
+                      {(['slow', 'balanced', 'fast'] as const).map((p) => (
+                        <Button
+                          key={p}
+                          type={pace === p ? 'primary' : 'default'}
+                          ghost={pace === p}
+                          block
+                          onClick={() => setPace(p)}
+                        >
+                          {p === 'slow' ? '慢热' : p === 'balanced' ? '均衡' : '快节奏'}
+                        </Button>
+                      ))}
+                    </Space.Compact>
                   </div>
                 </div>
               </div>
@@ -340,25 +333,27 @@ export default function NewWorkWizardPage() {
                 </h3>
                 <div className="flex flex-wrap gap-1.5">
                   {[...keywords].map((k) => (
-                    <button
+                    <Button
                       key={k}
-                      type="button"
+                      type="primary"
+                      shape="round"
+                      icon={<X size={14} />}
+                      iconPosition="end"
                       onClick={() => toggleKeyword(k)}
-                      className="px-3 py-1.5 rounded-full bg-primary-container text-on-primary-container text-label-md font-semibold flex items-center gap-1"
+                      style={{ background: 'var(--ant-color-primary-container, #ccfbf1)', color: 'var(--ant-color-on-primary-container, #134e4a)' }}
                     >
                       {k}
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
                   ))}
                   {CANDIDATE_KEYWORDS.filter((k) => !keywords.has(k)).map((k) => (
-                    <button
+                    <Button
                       key={k}
-                      type="button"
+                      type="default"
+                      shape="round"
                       onClick={() => toggleKeyword(k)}
-                      className="px-3 py-1.5 rounded-full bg-surface-container text-on-surface-variant text-label-md border border-outline-variant/40 hover:bg-primary-fixed cursor-pointer"
                     >
                       {k}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -399,36 +394,35 @@ export default function NewWorkWizardPage() {
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
+            <Button
+              type="default"
+              icon={<ArrowLeft size={16} />}
               disabled={step === 0 || submitting}
               onClick={() => setStep(Math.max(0, step - 1))}
-              className="px-3 py-2 rounded-lg bg-surface-container-lowest border border-outline-variant/50 text-on-surface text-label-md disabled:opacity-40"
             >
-              <span className="inline-flex items-center gap-1">
-                <ArrowLeft size={16} /> 上一步
-              </span>
-            </button>
+              上一步
+            </Button>
             {step < STEPS.length - 1 ? (
-              <button
-                type="button"
+              <Button
+                type="primary"
+                icon={<ArrowRight size={18} />}
+                iconPosition="end"
                 onClick={() => setStep(step + 1)}
                 disabled={submitting}
-                className="px-3 py-2 rounded-lg bg-primary text-white text-label-md font-medium hover:bg-primary-hover flex items-center gap-1 disabled:opacity-60"
               >
-                <span>下一步</span>
-                <ArrowRight size={18} />
-              </button>
+                下一步
+              </Button>
             ) : (
-              <button
-                type="button"
+              <Button
+                type="primary"
+                icon={<ArrowRight size={18} />}
+                iconPosition="end"
                 onClick={handleCreate}
                 disabled={submitting}
-                className="px-3 py-2 rounded-lg bg-primary text-white text-label-md font-medium hover:bg-primary-hover flex items-center gap-1 disabled:opacity-60"
+                loading={submitting}
               >
-                <span>{submitting ? '创建中…' : '创建作品'}</span>
-                <ArrowRight size={18} />
-              </button>
+                {submitting ? '创建中…' : '创建作品'}
+              </Button>
             )}
           </div>
         </div>
@@ -457,35 +451,35 @@ function StepBasics({
       <h3 className="text-headline-sm font-semibold text-on-surface">基础信息</h3>
       <div className="flex flex-col gap-2">
         <label className="text-label-md text-on-surface">作品标题</label>
-        <input
+        <Input
+          size="large"
           value={title}
           onChange={(e) => onTitle(e.target.value)}
-          className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
         />
       </div>
       <div className="flex flex-col gap-2">
         <label className="text-label-md text-on-surface">一句话简介 (Logline)</label>
-        <textarea
+        <Input.TextArea
+          rows={4}
           value={logline}
           onChange={(e) => onLogline(e.target.value)}
-          className="h-24 px-3 py-2 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface resize-none focus:outline-none focus:border-primary-container"
         />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <label className="text-label-md text-on-surface">主笔名</label>
-          <input
+          <Input
+            size="large"
             value={penName}
             onChange={(e) => onPenName(e.target.value)}
-            className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
           />
         </div>
         <div className="flex flex-col gap-2">
           <label className="text-label-md text-on-surface">第一卷名</label>
-          <input
+          <Input
+            size="large"
             value={volume1Name}
             onChange={(e) => onVolume1Name(e.target.value)}
-            className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
           />
         </div>
       </div>
@@ -504,25 +498,19 @@ function StepWorld({ protagonist: _protagonist, onProtagonist: _onProtagonist }:
       <h3 className="text-headline-sm font-semibold text-on-surface">世界观种子（可后续精修）</h3>
       <div className="flex flex-col gap-2">
         <label className="text-label-md text-on-surface">核心矛盾</label>
-        <textarea
+        <Input.TextArea
+          rows={4}
           defaultValue="陈平安要在仙凡混杂的乱世中寻找自己的道，同时守护他珍视的人。"
-          className="h-24 px-3 py-2 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface resize-none focus:outline-none focus:border-primary-container"
         />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <label className="text-label-md text-on-surface">主角名</label>
-          <input
-            defaultValue="陈平安"
-            className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
-          />
+          <Input size="large" defaultValue="陈平安" />
         </div>
         <div className="flex flex-col gap-2">
           <label className="text-label-md text-on-surface">起点设定</label>
-          <input
-            defaultValue="骊珠洞天 · 少年游"
-            className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
-          />
+          <Input size="large" defaultValue="骊珠洞天 · 少年游" />
         </div>
       </div>
       <div className="flex flex-col gap-2">
@@ -533,7 +521,7 @@ function StepWorld({ protagonist: _protagonist, onProtagonist: _onProtagonist }:
               <GripVertical size={18} className="text-primary" />
               <span className="font-code-sm text-on-surface-variant w-6">{i + 1}</span>
               <span className="flex-1 text-body-md text-on-surface">{b}</span>
-              <button className="text-outline hover:text-error"><Trash2 size={18} /></button>
+              <Button type="text" shape="circle" danger icon={<Trash2 size={18} />} aria-label="删除节拍" />
             </div>
           ))}
         </div>

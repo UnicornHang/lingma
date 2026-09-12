@@ -1,5 +1,6 @@
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { Button } from 'antd';
 import { useEffect } from 'react';
 import {
   Bold,
@@ -125,18 +126,17 @@ function Toolbar({ editor }: ToolbarProps) {
     children: React.ReactNode;
     title: string;
   }) => (
-    <button
-      type="button"
+    <Button
+      type={active ? 'primary' : 'text'}
+      size="small"
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`h-8 w-8 inline-flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-container disabled:opacity-40 disabled:cursor-not-allowed ${
-        active ? 'bg-primary-container text-on-primary-container' : ''
-      }`}
+      style={{ width: 32, height: 32, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
     >
       {children}
-    </button>
+    </Button>
   );
 
   const Divider = () => <div className="w-px h-5 bg-outline-variant/40 mx-1" />;

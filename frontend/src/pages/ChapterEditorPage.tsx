@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App } from 'antd';
+import { App, Button } from 'antd';
 import {
   ChevronDown,
   ChevronRight,
@@ -234,12 +234,13 @@ export default function ChapterEditorPage() {
           <p className="text-body-md text-on-surface-variant">
             在左侧大纲树中点击任意章节即可进入编辑器。
           </p>
-          <button
+          <Button
+            type="primary"
             onClick={() => navigate('/works')}
-            className="mt-2 px-4 py-2 rounded-lg bg-primary text-white text-label-md"
+            style={{ marginTop: 8 }}
           >
             返回作品列表
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -253,7 +254,7 @@ export default function ChapterEditorPage() {
         <div className="p-6 border-b border-outline-variant/30">
           <h3 className="text-headline-sm font-semibold text-on-surface flex items-center justify-between">
             <span>{chapter ? chapter.title : '加载中…'}</span>
-            <button className="text-outline"><Plus size={18} /></button>
+            <Button type="text" shape="circle" icon={<Plus size={18} />} aria-label="新建章节" />
           </h3>
           <p className="text-body-sm text-on-surface-variant mt-1">
             {chapter ? `第 ${chapter.id.slice(0, 4)} 章 · v${chapter.version}` : '章节元数据'}
@@ -262,7 +263,12 @@ export default function ChapterEditorPage() {
         <div className="p-4 flex flex-col gap-1">
           {OUTLINE.map((vol) => (
             <div key={vol.volume} className="flex flex-col gap-0.5">
-              <button className="flex items-center justify-between px-2 py-1 rounded hover:bg-surface-container">
+              <Button
+                type="text"
+                block
+                className="!justify-start !text-left"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px' }}
+              >
                 {vol.expanded ? (
                   <ChevronDown size={16} className="text-outline" />
                 ) : (
@@ -272,7 +278,7 @@ export default function ChapterEditorPage() {
                   {vol.volume}
                 </span>
                 <span className="font-code-sm text-outline">{vol.chapters} 章</span>
-              </button>
+              </Button>
               {vol.expanded && (
                 <div className="ml-4 flex flex-col gap-0.5">
                   {vol.items.map((c) => (
@@ -322,25 +328,29 @@ export default function ChapterEditorPage() {
 
           {/* Toolbar (TipTap's own toolbar is inside RichEditor; here we keep meta + AI button) */}
           <div className="flex items-center gap-1 p-1 mt-4 bg-surface-container-lowest rounded-lg border border-outline-variant/40 shadow-L1-card">
-            <button
+            <Button
+              type="primary"
+              ghost
+              size="small"
+              icon={<Bot size={16} />}
               onClick={handleAiContinue}
               disabled={isStreaming}
-              className="px-2 py-1 text-primary bg-primary-container rounded inline-flex items-center gap-1 disabled:opacity-50"
               title="AI 续写 800 字"
             >
-              <Bot size={18} />
-              <span className="text-label-sm font-semibold">续写</span>
-            </button>
+              续写
+            </Button>
             <span className="px-2 py-1 text-body-sm text-on-surface-variant">提示词</span>
             {isStreaming && (
-              <button
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<X size={16} />}
                 onClick={handleCancel}
-                className="px-2 py-1 rounded text-error hover:bg-error-container inline-flex items-center gap-1"
                 title="取消生成"
               >
-                <X size={16} />
-                <span className="text-label-sm">取消</span>
-              </button>
+                取消
+              </Button>
             )}
             <span className="ml-auto px-2 py-1 text-body-sm text-on-surface-variant inline-flex items-center gap-1">
               {saving ? (
@@ -432,17 +442,15 @@ export default function ChapterEditorPage() {
         {/* Tabs */}
         <div className="flex items-center gap-1 px-4 py-2 border-b border-outline-variant/30">
           {TABS.map((t, i) => (
-            <button
+            <Button
               key={t}
+              type={activeTab === i ? 'primary' : 'text'}
+              size="small"
               onClick={() => setActiveTab(i)}
-              className={`px-3 py-1.5 rounded text-label-md ${
-                activeTab === i
-                  ? 'bg-primary-container text-on-primary-container font-semibold'
-                  : 'text-on-surface-variant hover:bg-surface-container'
-              }`}
+              ghost={activeTab === i}
             >
               {t}
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -494,7 +502,7 @@ export default function ChapterEditorPage() {
                   <span className="text-label-md text-on-surface">来客 (未命名)</span>
                   <span className="font-code-sm text-outline">尚未建立档案</span>
                 </div>
-                <button className="text-primary font-code-sm hover:underline">+ 创建档案</button>
+                <Button type="link" size="small" style={{ padding: 0, height: 'auto' }}>+ 创建档案</Button>
               </div>
             </div>
           </div>
@@ -552,7 +560,7 @@ export default function ChapterEditorPage() {
               <p className="text-body-sm text-on-surface">
                 "白驴" → 暂无关联，可在后续卷中关联「骊珠洞天·灵兽」
               </p>
-              <button className="text-primary font-code-sm hover:underline mt-1">+ 加入伏笔簿</button>
+              <Button type="link" size="small" style={{ padding: 0, height: 'auto', marginTop: 4 }}>+ 加入伏笔簿</Button>
             </div>
           </div>
         </div>
