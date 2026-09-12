@@ -1,0 +1,436 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  X,
+  BookOpen,
+  Building2,
+  Rocket,
+  Building,
+  Brain,
+  Heart,
+  Sword,
+  Plus,
+  ArrowRight,
+  ArrowLeft,
+  CheckCircle2,
+  Circle,
+  Hash,
+  Flag,
+  Sparkles,
+  GripVertical,
+  Trash2,
+  Info,
+} from 'lucide-react';
+
+const STEPS = [
+  { key: 'basics', label: '基础信息' },
+  { key: 'genre',  label: '体裁与受众' },
+  { key: 'world',  label: '世界观种子' },
+  { key: 'review', label: '确认创建' },
+];
+
+const GENRES = [
+  { key: 'fantasy',    label: '玄幻 / 修仙', desc: '修炼体系 + 异世界',  Icon: BookOpen,       checked: true },
+  { key: 'urban',      label: '都市 / 现实', desc: '现代背景 + 情感',    Icon: Building2,      checked: false },
+  { key: 'sci_fi',     label: '科幻 / 末世', desc: '技术设定 + 推演',    Icon: Rocket,         checked: true },
+  { key: 'historical', label: '历史 / 架空', desc: '朝代 / 异世界历史',  Icon: Building,       checked: false },
+  { key: 'mystery',    label: '悬疑 / 推理', desc: '案件 + 反转',         Icon: Brain,          checked: false },
+  { key: 'romance',    label: '言情 / 甜宠', desc: '情感主线',            Icon: Heart,          checked: false },
+  { key: 'wuxia',      label: '武侠 / 仙侠', desc: '江湖 / 门派',         Icon: Sword,          checked: false },
+  { key: 'custom',     label: '自定义',       desc: '告诉我更多…',        Icon: Plus,           checked: false },
+];
+
+const SELECTED_KEYWORDS = ['热血狂飙', '杀伐果断', '严谨设定', '反转不断'];
+const CANDIDATE_KEYWORDS = ['轻松幽默', '智商在线', '群像推演', '慢热种田', '甜虐交织', '史诗气魄'];
+
+export default function NewWorkWizardPage() {
+  const [step, setStep] = useState(1); // 0-based: 0,1,2,3
+  const [audience, setAudience] = useState<'male' | 'female' | 'all'>('male');
+  const [pace, setPace] = useState<'slow' | 'balanced' | 'fast'>('balanced');
+  const [genre, setGenre] = useState<Set<string>>(
+    new Set(GENRES.filter((g) => g.checked).map((g) => g.key))
+  );
+  const [keywords, setKeywords] = useState<Set<string>>(new Set(SELECTED_KEYWORDS));
+
+  const toggleGenre = (key: string) => {
+    setGenre((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+  const toggleKeyword = (k: string) => {
+    setKeywords((prev) => {
+      const next = new Set(prev);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-auto p-6">
+      {/* Modal */}
+      <div className="bg-surface-container-lowest rounded-2xl shadow-L3-modal w-full max-w-[1120px] max-h-[920px] overflow-hidden flex flex-col my-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between px-8 py-4 border-b border-outline-variant/30">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-headline-md font-bold text-on-surface">
+              新建作品向导
+            </h2>
+            <p className="text-body-sm text-on-surface-variant">
+              第 {step + 1} 步 / 共 {STEPS.length} 步 · {STEPS[step].label}
+            </p>
+          </div>
+          <Link
+            to="/works"
+            className="text-outline hover:text-on-surface"
+          >
+            <X size={24} />
+          </Link>
+        </div>
+
+        {/* Stepper */}
+        <div className="flex items-center gap-3 px-8 py-3 bg-surface-container-low border-b border-outline-variant/30">
+          {STEPS.map((s, i) => {
+            const done = i < step;
+            const active = i === step;
+            return (
+              <div key={s.key} className="flex items-center gap-3 flex-1 last:flex-initial">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-label-md font-semibold ${
+                      done
+                        ? 'bg-primary text-white'
+                        : active
+                          ? 'bg-primary text-white'
+                          : 'bg-surface-container text-on-surface-variant'
+                    }`}
+                  >
+                    {done ? <CheckCircle2 size={16} /> : i + 1}
+                  </span>
+                  <span
+                    className={`text-label-md ${
+                      active ? 'text-on-surface font-semibold' : 'text-on-surface-variant'
+                    }`}
+                  >
+                    {s.label}
+                  </span>
+                </div>
+                {i < STEPS.length - 1 && (
+                  <div className={`flex-1 h-px ${done || active ? 'bg-primary' : 'bg-outline-variant'}`} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-6">
+          {step === 0 && <StepBasics />}
+          {step === 1 && (
+            <>
+              <div className="flex flex-col gap-3">
+                <h3 className="text-headline-sm font-semibold text-on-surface">
+                  选择体裁 <span className="text-body-sm text-on-surface-variant font-normal">（可多选 1-3 个）</span>
+                </h3>
+                <div className="grid grid-cols-4 gap-4">
+                  {GENRES.map((g) => {
+                    const checked = genre.has(g.key);
+                    return (
+                      <button
+                        key={g.key}
+                        type="button"
+                        onClick={() => toggleGenre(g.key)}
+                        className={`p-4 rounded-xl border-2 cursor-pointer flex flex-col gap-2 text-left transition-colors ${
+                          checked
+                            ? 'border-primary bg-primary-fixed'
+                            : 'border-outline-variant/40 bg-surface-container-lowest hover:border-primary-container'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <g.Icon
+                            size={28}
+                            className={checked ? 'text-primary' : 'text-outline'}
+                          />
+                          {checked ? (
+                            <CheckCircle2 size={20} className="text-primary" />
+                          ) : (
+                            <Circle size={20} className="text-outline" />
+                          )}
+                        </div>
+                        <span className="text-label-lg font-semibold text-on-surface">
+                          {g.label}
+                        </span>
+                        <span className="text-body-sm text-on-surface-variant">{g.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="flex flex-col gap-3">
+                  <h3 className="text-headline-sm font-semibold text-on-surface">受众定位</h3>
+                  <div className="flex items-center gap-1 p-1 bg-surface-container-low rounded-lg">
+                    {(['male', 'female', 'all'] as const).map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setAudience(k)}
+                        className={`flex-1 py-2 rounded text-label-md ${
+                          audience === k
+                            ? 'bg-primary-container text-on-primary-container font-semibold'
+                            : 'text-on-surface-variant hover:bg-surface-container-highest'
+                        }`}
+                      >
+                        {k === 'male' ? '男频' : k === 'female' ? '女频' : '不限'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-col gap-2 mt-2">
+                    <label className="text-label-md text-on-surface">读者画像</label>
+                    <textarea
+                      defaultValue="15-35 岁男性读者，热衷爽文节奏与修炼升级，期待清晰的目标—冲突—收获循环。"
+                      className="h-24 px-3 py-2 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface resize-none focus:outline-none focus:border-primary-container"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <h3 className="text-headline-sm font-semibold text-on-surface">节奏与字数</h3>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-label-sm text-on-surface-variant">章节目标字数</label>
+                    <div className="flex items-center px-3 h-9 rounded-lg border border-outline-variant/50 bg-surface-container-lowest font-code-md text-code-md">
+                      <Hash size={18} className="text-outline" />
+                      <input
+                        defaultValue="3,500"
+                        className="flex-1 outline-none ml-2 bg-transparent font-code-md text-code-md"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-label-sm text-on-surface-variant">作品目标总字数</label>
+                    <div className="flex items-center px-3 h-9 rounded-lg border border-outline-variant/50 bg-surface-container-lowest font-code-md text-code-md">
+                      <Flag size={18} className="text-outline" />
+                      <input
+                        defaultValue="100 万字"
+                        className="flex-1 outline-none ml-2 bg-transparent font-code-md text-code-md"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 p-1 bg-surface-container-low rounded-lg mt-2">
+                    {(['slow', 'balanced', 'fast'] as const).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setPace(p)}
+                        className={`flex-1 py-2 rounded text-label-md ${
+                          pace === p
+                            ? 'bg-primary-container text-on-primary-container font-semibold'
+                            : 'text-on-surface-variant hover:bg-surface-container-highest'
+                        }`}
+                      >
+                        {p === 'slow' ? '慢热' : p === 'balanced' ? '均衡' : '快节奏'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <h3 className="text-headline-sm font-semibold text-on-surface">
+                  风格关键词 <span className="text-body-sm text-on-surface-variant font-normal">（最多 8 个）</span>
+                </h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {[...keywords].map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => toggleKeyword(k)}
+                      className="px-3 py-1.5 rounded-full bg-primary-container text-on-primary-container text-label-md font-semibold flex items-center gap-1"
+                    >
+                      {k}
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  ))}
+                  {CANDIDATE_KEYWORDS.filter((k) => !keywords.has(k)).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => toggleKeyword(k)}
+                      className="px-3 py-1.5 rounded-full bg-surface-container text-on-surface-variant text-label-md border border-outline-variant/40 hover:bg-primary-fixed cursor-pointer"
+                    >
+                      {k}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+          {step === 2 && <StepWorld />}
+          {step === 3 && <StepReview />}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-8 py-4 border-t border-outline-variant/30 bg-surface-container-low">
+          <div className="flex items-center gap-2">
+            <Sparkles size={18} className="text-tertiary" />
+            <span className="text-body-sm text-on-surface-variant">
+              {step < 2
+                ? '下一步可让 Writer Agent 自动生成作品世界观草案'
+                : step === 3
+                  ? '点击「创建」后将立即初始化数据库与向量库'
+                  : '确认信息后即可进入编辑器'}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={step === 0}
+              onClick={() => setStep(Math.max(0, step - 1))}
+              className="px-3 py-2 rounded-lg bg-surface-container-lowest border border-outline-variant/50 text-on-surface text-label-md disabled:opacity-40"
+            >
+              <span className="inline-flex items-center gap-1">
+                <ArrowLeft size={16} /> 上一步
+              </span>
+            </button>
+            {step < STEPS.length - 1 ? (
+              <button
+                type="button"
+                onClick={() => setStep(step + 1)}
+                className="px-3 py-2 rounded-lg bg-primary text-white text-label-md font-medium hover:bg-primary-hover flex items-center gap-1"
+              >
+                <span>下一步</span>
+                <ArrowRight size={18} />
+              </button>
+            ) : (
+              <Link
+                to="/works"
+                className="px-3 py-2 rounded-lg bg-primary text-white text-label-md font-medium hover:bg-primary-hover flex items-center gap-1"
+              >
+                <span>创建作品</span>
+                <ArrowRight size={18} />
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StepBasics() {
+  return (
+    <div className="flex flex-col gap-6 max-w-2xl">
+      <h3 className="text-headline-sm font-semibold text-on-surface">基础信息</h3>
+      <div className="flex flex-col gap-2">
+        <label className="text-label-md text-on-surface">作品标题</label>
+        <input
+          defaultValue="剑来·前传"
+          className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <label className="text-label-md text-on-surface">一句话简介 (Logline)</label>
+        <textarea
+          defaultValue="讲述陈平安从骊珠洞天走出后的一段尘缘。"
+          className="h-24 px-3 py-2 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface resize-none focus:outline-none focus:border-primary-container"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <label className="text-label-md text-on-surface">主笔名</label>
+          <input
+            defaultValue="烽火戏诸侯"
+            className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <label className="text-label-md text-on-surface">第一卷名</label>
+          <input
+            defaultValue="少年游"
+            className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StepWorld() {
+  return (
+    <div className="flex flex-col gap-4 max-w-3xl">
+      <h3 className="text-headline-sm font-semibold text-on-surface">世界观种子（可后续精修）</h3>
+      <div className="flex flex-col gap-2">
+        <label className="text-label-md text-on-surface">核心矛盾</label>
+        <textarea
+          defaultValue="陈平安要在仙凡混杂的乱世中寻找自己的道，同时守护他珍视的人。"
+          className="h-24 px-3 py-2 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface resize-none focus:outline-none focus:border-primary-container"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <label className="text-label-md text-on-surface">主角名</label>
+          <input
+            defaultValue="陈平安"
+            className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <label className="text-label-md text-on-surface">起点设定</label>
+          <input
+            defaultValue="骊珠洞天 · 少年游"
+            className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
+          />
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        <label className="text-label-md text-on-surface">期望前三章的节拍</label>
+        <div className="flex flex-col gap-2">
+          {['楔子：骊珠洞天少年不识愁滋味', '第一章：邻居少年远行求学', '第二章：入山门拜师'].map((b, i) => (
+            <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-container-low border border-outline-variant/40">
+              <GripVertical size={18} className="text-primary" />
+              <span className="font-code-sm text-on-surface-variant w-6">{i + 1}</span>
+              <span className="flex-1 text-body-md text-on-surface">{b}</span>
+              <button className="text-outline hover:text-error"><Trash2 size={18} /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StepReview() {
+  return (
+    <div className="flex flex-col gap-6 max-w-2xl">
+      <div className="surface-card p-6 flex flex-col gap-3">
+        <h3 className="text-headline-sm font-semibold text-on-surface pb-2 border-b border-outline-variant/40">
+          即将创建
+        </h3>
+        <Row label="标题" value="剑来·前传" />
+        <Row label="体裁" value="玄幻 / 修仙, 科幻 / 末世 (2)" />
+        <Row label="受众" value="男频 · 15-35 岁" />
+        <Row label="节奏" value="均衡" />
+        <Row label="章节字数" value="3,500" />
+        <Row label="目标总字数" value="100 万字" />
+        <Row label="风格关键词" value="热血狂飙, 杀伐果断, 严谨设定, 反转不断" />
+        <Row label="主笔名" value="烽火戏诸侯" />
+        <Row label="第一卷名" value="少年游" />
+      </div>
+      <div className="px-3 py-2 rounded-lg bg-tertiary-container/20 text-body-sm text-on-surface-variant">
+        <Info size={18} className="align-middle text-tertiary inline" />{' '}
+        创建后会在 <code>data/works/&lt;work_id&gt;/</code> 下初始化 SQLite + Chroma 子库。
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-4">
+      <span className="text-label-md text-on-surface-variant w-24">{label}</span>
+      <span className="font-code-md text-on-surface">{value}</span>
+    </div>
+  );
+}
