@@ -1,6 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { App } from 'antd';
+import { useState } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -10,17 +8,16 @@ import {
   CheckCircle2,
   AlertTriangle,
   Plus,
-  Wand2,
-  Save,
-  Loader2,
-  X,
+  Bold,
+  Italic,
+  Underline,
+  Heading,
+  Quote,
+  List,
+  ListOrdered,
 } from 'lucide-react';
 
-import { chaptersApi, type Chapter, type TipTapDoc } from '@/api/chapters';
-import { useGenerationStream } from '@/hooks/useGenerationStream';
-import { RichEditor } from '@/components/RichEditor';
-
-// 示例大纲树 —— 后端接入后可换成真实 outline tree API
+// 示例大纲树
 const OUTLINE = [
   {
     volume: '第一卷·少年游',
@@ -38,225 +35,20 @@ const OUTLINE = [
 
 const TABS = ['分析', '批注', '角色', '一致性', '伏笔'];
 
-/** TipTap 文档转纯文本（用于字数统计；本地简易实现） */
-function plainFromDoc(doc: TipTapDoc | null | undefined): string {
-  if (!doc?.content) return '';
-  const walk = (node: { type: string; text?: string; content?: unknown[] }): string => {
-    if (node.type === 'text' && typeof node.text === 'string') return node.text;
-    const inner = Array.isArray(node.content) ? (node.content as Array<{ type: string; text?: string; content?: unknown[] }>) : [];
-    if (node.type === 'paragraph' || node.type === 'heading') {
-      return inner.map(walk).join('') + '\n';
-    }
-    return inner.map(walk).join('');
-  };
-  return doc.content.map(walk).join('').trim();
-}
-
-/** 把纯文本包装成 TipTap 段落 doc */
-function plainToDoc(plain: string): TipTapDoc {
-  return {
-    type: 'doc',
-    content: plain.split(/\n+/).map((line) => ({
-      type: 'paragraph',
-      content: line ? [{ type: 'text', text: line }] : [],
-    })),
-  };
-}
-
-/** 拼接两个 TipTap doc —— 用于将生成内容追加到现有文档末尾 */
-function appendPlain(prev: TipTapDoc | null, more: string): TipTapDoc {
-  const baseContent = prev?.content ?? [];
-  const extra = plainToDoc(more).content ?? [];
-  return { type: 'doc', content: [...baseContent, ...extra] };
-}
-
 export default function ChapterEditorPage() {
-  const { chapterId } = useParams<{ chapterId?: string }>();
-  const navigate = useNavigate();
-  const { message } = App.useApp();
-
-  const [chapter, setChapter] = useState<Chapter | null>(null);
-  const [content, setContent] = useState<TipTapDoc | null>(null);
-  const [plainText, setPlainText] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
-  const [taskId, setTaskId] = useState<string | null>(null);
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
-  const saveTimerRef = useRef<number | null>(null);
-
-  // 1) 加载章节
-  useEffect(() => {
-    if (!chapterId) return;
-    let cancelled = false;
-    setLoading(true);
-    chaptersApi
-      .get(chapterId)
-      .then((c) => {
-        if (cancelled) return;
-        setChapter(c);
-        const initial = (c.content ?? { type: 'doc', content: [] }) as TipTapDoc;
-        setContent(initial);
-        setPlainText(c.plain_content || plainFromDoc(initial));
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : '加载章节失败';
-        message.error(msg);
-      })
-      .finally(() => !cancelled && setLoading(false));
-    return () => { cancelled = true; };
-  }, [chapterId, message]);
-
-  // 2) 编辑器变更 → 标记 dirty、调度自动保存
-  const handleEditorChange = useCallback((json: TipTapDoc, plain: string) => {
-    setContent(json);
-    setPlainText(plain);
-    setDirty(true);
-  }, []);
-
-  const persist = useCallback(async () => {
-    if (!chapter || !dirty) return;
-    setSaving(true);
-    try {
-      const updated = await chaptersApi.update(chapter.id, {
-        content: content ?? undefined,
-        plain_content: plainText,
-      });
-      setChapter(updated);
-      setDirty(false);
-      setLastSavedAt(new Date());
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '保存失败';
-      message.error(msg);
-    } finally {
-      setSaving(false);
-    }
-  }, [chapter, dirty, content, plainText, message]);
-
-  // 防抖自动保存：800ms 后无操作则保存
-  useEffect(() => {
-    if (!dirty || !chapter) return;
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current);
-    }
-    saveTimerRef.current = window.setTimeout(() => {
-      persist();
-    }, 800);
-    return () => {
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-    };
-  }, [dirty, chapter, persist]);
-
-  // 3) WS 流式生成
-  const generation = useGenerationStream(taskId);
-
-  const handleAiContinue = useCallback(async () => {
-    if (!chapterId) {
-      message.warning('缺少章节 ID，无法续写');
-      return;
-    }
-    if (generation.status === 'streaming' || generation.status === 'connecting') {
-      message.info('已有生成任务在进行中');
-      return;
-    }
-    try {
-      const resp = await chaptersApi.generate(chapterId, {
-        chapter_id: chapterId,
-        target_word_count: 800,
-      });
-      setTaskId(resp.task_id);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '创建生成任务失败';
-      message.error(msg);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapterId, generation.status]);
-
-  // WS 收到 'start' 后才开始送 messages（按协议需在 connected 后才能 send start）
-  useEffect(() => {
-    if (generation.status !== 'ready') return;
-    if (!taskId) return;
-    generation.start(
-      [
-        { role: 'system', content: '你是 LingMa Writer Agent，负责续写中文网文章节，保持原作风与人物声音。' },
-        { role: 'user',   content: `请基于以下已有正文续写 800 字左右，开头接续不要重复：\n\n${plainText}` },
-      ],
-      { model: 'gpt-4o-mini', max_tokens: 1500, temperature: 0.8 }
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generation.status, taskId]);
-
-  // 收到 'done' 后把生成内容合并进编辑器并自动保存
-  useEffect(() => {
-    if (generation.status !== 'done') return;
-    const merged = appendPlain(content, generation.content);
-    setContent(merged);
-    setPlainText(plainFromDoc(merged));
-    setDirty(true);
-    setTaskId(null);
-    message.success(`Writer Agent 已续写 ${generation.content.length} 字`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generation.status, generation.content]);
-
-  // 错误状态
-  useEffect(() => {
-    if (generation.status === 'error' && generation.error) {
-      message.error(`生成失败：${generation.error}`);
-      setTaskId(null);
-    } else if (generation.status === 'cancelled') {
-      message.info('已取消生成');
-      setTaskId(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generation.status, generation.error]);
-
-  const handleCancel = useCallback(() => {
-    generation.cancel();
-    setTaskId(null);
-  }, [generation]);
-
-  // 字数显示
-  const wordCount = useMemo(() => plainText.length, [plainText]);
-  const isStreaming = generation.status === 'streaming' || generation.status === 'connecting' || generation.status === 'ready';
-
-  // ---------- 无 chapterId：占位提示 ----------
-  if (!chapterId) {
-    return (
-      <div className="flex w-full h-full items-center justify-center bg-surface-container-low">
-        <div className="text-center flex flex-col items-center gap-3 p-8">
-          <FileText size={56} className="text-outline" />
-          <h2 className="text-headline-sm font-semibold text-on-surface">请从大纲中选择一个章节</h2>
-          <p className="text-body-md text-on-surface-variant">
-            在左侧大纲树中点击任意章节即可进入编辑器。
-          </p>
-          <button
-            onClick={() => navigate('/works')}
-            className="mt-2 px-4 py-2 rounded-lg bg-primary text-white text-label-md"
-          >
-            返回作品列表
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ---------- 主体 ----------
   return (
     <div className="flex w-full h-full bg-surface-container-low">
       {/* Outline tree (left, 300px) */}
       <aside className="w-[300px] flex-shrink-0 h-full bg-surface-container-lowest border-r border-outline-variant/30 overflow-y-auto flex flex-col">
         <div className="p-6 border-b border-outline-variant/30">
           <h3 className="text-headline-sm font-semibold text-on-surface flex items-center justify-between">
-            <span>{chapter ? chapter.title : '加载中…'}</span>
+            <span>剑来·前传</span>
             <button className="text-outline"><Plus size={18} /></button>
           </h3>
           <p className="text-body-sm text-on-surface-variant mt-1">
-            {chapter ? `第 ${chapter.id.slice(0, 4)} 章 · v${chapter.version}` : '章节元数据'}
+            35.2 万字 · 142 章 · 玄幻
           </p>
         </div>
         <div className="p-4 flex flex-col gap-1">
@@ -278,8 +70,7 @@ export default function ChapterEditorPage() {
                   {vol.items.map((c) => (
                     <a
                       key={c.id}
-                      href={`/chapters/${c.id}`}
-                      onClick={(e) => { e.preventDefault(); navigate(`/chapters/${c.id}`); }}
+                      href="#"
                       className={`flex items-center gap-2 px-2 py-1.5 rounded text-body-sm ${
                         c.active
                           ? 'bg-primary-container text-on-primary-container font-semibold'
@@ -307,109 +98,90 @@ export default function ChapterEditorPage() {
             <span className="text-outline">/</span>
             <span>第 11 章</span>
           </div>
-          <h1 className="text-display font-bold text-on-surface">
-            {chapter?.title ?? '加载中…'}
-          </h1>
+          <h1 className="text-display font-bold text-on-surface">意外来客</h1>
           <div className="flex items-center gap-2 mt-2">
             <span className="chip-tertiary">玄幻</span>
             <span className="chip-primary">高潮</span>
             <span className="chip-secondary">POV · 第一人称</span>
-            <span className="font-code-sm text-on-surface-variant">
-              {wordCount.toLocaleString()} 字
-              {chapter ? ` · 目标 ${(chapter.word_count + 800).toLocaleString()}` : ''}
-            </span>
+            <span className="font-code-sm text-on-surface-variant">3,247 / 3,500 字</span>
           </div>
 
-          {/* Toolbar (TipTap's own toolbar is inside RichEditor; here we keep meta + AI button) */}
+          {/* Toolbar */}
           <div className="flex items-center gap-1 p-1 mt-4 bg-surface-container-lowest rounded-lg border border-outline-variant/40 shadow-L1-card">
-            <button
-              onClick={handleAiContinue}
-              disabled={isStreaming}
-              className="px-2 py-1 text-primary bg-primary-container rounded inline-flex items-center gap-1 disabled:opacity-50"
-              title="AI 续写 800 字"
-            >
-              <Bot size={18} />
-              <span className="text-label-sm font-semibold">续写</span>
-            </button>
-            <span className="px-2 py-1 text-body-sm text-on-surface-variant">提示词</span>
-            {isStreaming && (
-              <button
-                onClick={handleCancel}
-                className="px-2 py-1 rounded text-error hover:bg-error-container inline-flex items-center gap-1"
-                title="取消生成"
-              >
-                <X size={16} />
-                <span className="text-label-sm">取消</span>
+            {[Bold, Italic, Underline].map((Icon, i) => (
+              <button key={i} className="text-on-surface-variant hover:bg-surface-container rounded px-2 py-1">
+                <Icon size={18} />
               </button>
-            )}
-            <span className="ml-auto px-2 py-1 text-body-sm text-on-surface-variant inline-flex items-center gap-1">
-              {saving ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" /> 保存中…
-                </>
-              ) : dirty ? (
-                <>
-                  <Save size={14} /> 有未保存的修改
-                </>
-              ) : lastSavedAt ? (
-                <>已自动保存 · {Math.max(1, Math.round((Date.now() - lastSavedAt.getTime()) / 1000))} 秒前</>
-              ) : (
-                '未修改'
-              )}
+            ))}
+            <div className="w-px h-5 bg-outline-variant/40 mx-1" />
+            {[Heading, Quote].map((Icon, i) => (
+              <button key={i} className="text-on-surface-variant hover:bg-surface-container rounded px-2 py-1">
+                <Icon size={18} />
+              </button>
+            ))}
+            <div className="w-px h-5 bg-outline-variant/40 mx-1" />
+            {[List, ListOrdered].map((Icon, i) => (
+              <button key={i} className="text-on-surface-variant hover:bg-surface-container rounded px-2 py-1">
+                <Icon size={18} />
+              </button>
+            ))}
+            <div className="w-px h-5 bg-outline-variant/40 mx-1" />
+            <button className="px-2 py-1 text-primary bg-primary-container rounded">
+              <Bot size={18} />
+            </button>
+            <span className="px-2 py-1 text-label-sm text-primary font-semibold">提示词</span>
+            <span className="ml-auto px-2 py-1 text-body-sm text-on-surface-variant">
+              已自动保存 · 12 秒前
             </span>
           </div>
 
-          {/* Body — TipTap RichEditor */}
-          <div className="mt-4">
-            {loading ? (
-              <div className="h-[400px] flex items-center justify-center bg-surface-container-lowest rounded-lg border border-outline-variant/30">
-                <Loader2 size={28} className="animate-spin text-outline" />
-              </div>
-            ) : (
-              <RichEditor
-                content={content}
-                editable={!isStreaming}
-                onChange={handleEditorChange}
-              />
-            )}
+          {/* Body */}
+          <div className="mt-6 flex flex-col gap-3 text-body-lg text-on-surface leading-[1.8]">
+            <p>
+              暮色从北岭深处涌下来，像墨汁渗入宣纸，把村口的石桥染成一道深沉的剪影。陈平安站在桥头，肩上的青布包比往日重了几分——他今天替刘羡阳挨了一记闷棍，右臂隐隐作痛。
+            </p>
+            <p>
+              "你怕了？"他低声问自己。
+              <span className="bg-primary-fixed px-1 rounded text-primary-container font-semibold cursor-pointer hover:bg-primary-fixed-dim">
+                怎么会。
+              </span>
+            </p>
+            <p>
+              远处的灯火次第亮起来，
+              <span className="bg-yellow-100/60 px-1 rounded cursor-pointer">
+                像是有人在替他点亮回家的路
+              </span>
+              ，可他此刻心里清楚，这条路通向的，未必是他想去的方向。
+            </p>
+            <p className="text-headline-md font-semibold text-on-surface mt-3">一</p>
+            <p>来客是个女子。</p>
+            <p>
+              她骑着一头通体雪白的驴子，自村北小路缓缓行来，身上披着一件不合季节的青灰色道袍，腰间悬着一柄无鞘短剑。她的目光在他身上停了片刻，似乎在确认什么，又似乎只是在打量。
+            </p>
+            <p>"你叫陈平安？"</p>
+            <p>他没有立刻回答。手心微微出汗。</p>
           </div>
 
-          {/* AI streaming preview card */}
-          {(generation.status === 'streaming' || generation.status === 'ready' || generation.status === 'connecting') && (
-            <div className="mt-4 p-4 rounded-lg bg-primary-fixed/40 border-l-4 border-primary flex items-start gap-3">
-              <Sparkles size={18} className="text-primary animate-pulse" />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-label-md text-on-surface font-semibold">Writer Agent 正在续写</span>
-                  <span className="font-code-sm text-on-surface-variant">
-                    {generation.status === 'streaming'
-                      ? `已生成 ${generation.content.length} 字`
-                      : generation.status === 'ready'
-                        ? '准备开始…'
-                        : '连接中…'}
-                  </span>
-                </div>
-                <p className="text-body-sm text-on-surface mt-1 whitespace-pre-wrap min-h-[1.5em]">
-                  {generation.content || ' '}
-                </p>
+          {/* AI suggestion inline */}
+          <div className="mt-4 p-4 rounded-lg bg-primary-fixed/40 border-l-4 border-primary flex items-start gap-3">
+            <Sparkles size={18} className="text-primary" />
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-label-md text-on-surface font-semibold">Writer Agent 建议续写</span>
+                <span className="font-code-sm text-on-surface-variant">
+                  从 <em>"他没有立刻回答"</em> 开始 · 节奏：慢热
+                </span>
+              </div>
+              <p className="text-body-sm text-on-surface mt-1">
+                女子见他不语，翻身下驴，从袖中取出一封泛黄的信笺：
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button className="px-3 py-1.5 rounded bg-primary text-white text-label-md">接受</button>
+                <button className="px-3 py-1.5 rounded bg-surface-container-lowest text-on-surface text-label-md">改写</button>
+                <button className="px-3 py-1.5 rounded text-on-surface-variant text-label-md hover:underline">拒绝</button>
               </div>
             </div>
-          )}
-
-          {generation.status === 'done' && (
-            <div className="mt-4 p-4 rounded-lg bg-tertiary-container/40 border-l-4 border-tertiary flex items-start gap-3">
-              <Wand2 size={18} className="text-tertiary" />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-label-md text-on-surface font-semibold">续写已完成</span>
-                  <span className="font-code-sm text-on-surface-variant">+{generation.content.length} 字</span>
-                </div>
-                <p className="text-body-sm text-on-surface-variant mt-1">
-                  内容已自动合并到正文，800ms 后将自动保存。
-                </p>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       </section>
 
@@ -420,13 +192,7 @@ export default function ChapterEditorPage() {
             <Bot size={20} className="text-primary" />
             <span className="text-label-lg font-semibold text-on-surface">协作 Co-pilot</span>
           </div>
-          <span className="chip-tertiary">
-            {generation.status === 'idle' || generation.status === 'done'
-              ? 'READY'
-              : generation.status === 'error'
-                ? 'ERROR'
-                : 'BUSY'}
-          </span>
+          <span className="chip-tertiary">READY</span>
         </div>
 
         {/* Tabs */}
@@ -452,7 +218,7 @@ export default function ChapterEditorPage() {
           <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant/40 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="chip-primary">节拍</span>
-              <span className="font-code-sm text-outline">第 {chapter?.id.slice(0, 4) ?? '--'} 章 · 段 5</span>
+              <span className="font-code-sm text-outline">第 11 章 · 段 5</span>
             </div>
             <p className="text-body-md text-on-surface">
               本章核心节拍：<strong>陌生人出现 + 主角审视</strong>

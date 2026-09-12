@@ -1,82 +1,74 @@
 /** @type {import('tailwindcss').Config} */
-// LingMa 设计系统 - Fresh Emerald Studio (翡翠版)
-// 主色: Teal #0D9488 / Emerald #059669 / Sky #0284C7
+// LingMa 设计系统 - Material 3 风格
+// 主色 #5B5FE9, 三级色 #00662B (绿)
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   darkMode: ['class', '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
-        // === Primary Spectrum: Teal & Emerald (lighter) ===
+        // === Material 3 主色系 ===
         primary: {
-          DEFAULT: '#0d9488',         // Standard teal
-          hover: '#14b8a6',
-          active: '#0f766e',
-          container: '#ccfbf1',       // Soft teal backdrop
-          'on-container': '#134e4a',
-          fixed: '#f0fdfa',           // Very soft mint (was teal-300, too vivid)
-          'fixed-dim': '#ccfbf1',
-          'on-fixed': '#042f2e',
-          // 兼容别名
-          'vibrant': '#10b981',       // Emerald accent
+          DEFAULT: '#5B5FE9',
+          hover: '#4A4ED8',
+          active: '#3D41C7',
+          container: '#E0E1FF',
+          'on-container': '#14199C',
+          fixed: '#DDE0FF',
+          'fixed-dim': '#BAC2FF',
+          'on-fixed': '#0B156F',
         },
-        // === Secondary Spectrum: Sky (lighter) ===
+        // === Material 3 次色系 (中性灰) ===
         secondary: {
-          DEFAULT: '#0ea5e9',         // Sky blue
-          hover: '#38bdf8',
-          container: '#e0f2fe',       // Soft sky backdrop
-          'on-container': '#075985',
-          fixed: '#bae6fd',
-          'fixed-dim': '#7dd3fc',
-          'on-fixed-variant': '#0369a1',
+          DEFAULT: '#5A5C72',
+          hover: '#474A5E',
+          container: '#E0E1F9',
+          'on-container': '#171A2C',
         },
-        // === Tertiary Spectrum: Green (lighter) ===
+        // === Material 3 三级色 (强调绿) ===
         tertiary: {
-          DEFAULT: '#10b981',         // Fresh emerald
-          hover: '#34d399',
-          container: '#d1fae5',
-          'on-container': '#065f46',
+          DEFAULT: '#00662B',
+          hover: '#005522',
+          container: '#9AF6B6',
+          'on-container': '#002009',
         },
         // === 语义色 ===
         error: {
-          DEFAULT: '#ef4444',
-          container: '#fee2e2',
-          'on-container': '#7f1d1d',
+          DEFAULT: '#BA1A1A',
+          container: '#FFDAD6',
+          'on-container': '#410002',
         },
-        // === Surface 色阶 (Fresh Emerald) ===
+        // === Material 3 Surface 色阶 ===
         surface: {
-          DEFAULT: '#ffffff',
-          dim: '#f0fdf4',             // mint surface-dim
-          bright: '#ffffff',
-          lowest: '#ffffff',
-          low: '#f0fdf4',             // mint surface-container-low
-          container: '#e6f7ef',       // mint surface-container
-          high: '#dcfce7',            // mint surface-container-high
-          highest: '#bbf7d0',         // mint surface-container-highest
+          DEFAULT: '#FCFBFF',
+          dim: '#DCD9E2',
+          bright: '#FCFBFF',
+          'lowest': '#FFFFFF',
+          low: '#F2F3FF',
+          DEFAULT: '#EFEDF7',
+          high: '#E9E7EF',
+          highest: '#E3E2E8',
         },
-        // === Background ===
-        background: '#f8fafc',        // Crisp daylight slate-white
-        // === On-Surface 文字色阶（提深） ===
-        'on-surface': '#0f172a',          // Heading obsidian
-        'on-surface-variant': '#334155',  // Body slate-700 (was slate-600)
-        'on-surface-low': '#64748b',      // slate-600 (was slate-400)
-        // === Outline（提深） ===
-        outline: '#64748b',
-        'outline-variant': '#cbd5e1',
+        // === On-Surface 文字色阶 ===
+        'on-surface': '#1C1B1E',
+        'on-surface-variant': '#46464F',
+        'on-surface-low': '#6B6B73',
+        // === Outline ===
+        outline: '#777680',
+        'outline-variant': '#C7C5D0',
 
         // === 向后兼容的别名 (老代码继续工作) ===
         accent: {
           DEFAULT: '#F59E0B',
           light: '#FEF3C7',
         },
-        success: '#059669',
-        warning: '#d97706',
-        danger: '#ef4444',
-        info: '#0284c7',
+        success: '#00662B',
+        warning: '#7C5800',
+        danger: '#BA1A1A',
+        info: '#0B6BCB',
       },
       fontFamily: {
         sans: [
-          'Plus Jakarta Sans',
           'Inter',
           '"Noto Sans SC"',
           '"PingFang SC"',
@@ -95,48 +87,44 @@ export default {
         ],
       },
       fontSize: {
-        display: ['40px', { lineHeight: '48px', letterSpacing: '-0.02em' }],
-        'headline-lg': ['24px', { lineHeight: '32px', letterSpacing: '-0.01em' }],
-        'headline-md': ['20px', { lineHeight: '28px', letterSpacing: '-0.005em' }],
-        'headline-sm': ['16px', { lineHeight: '24px' }],
-        'body-xl': ['18px', { lineHeight: '32px', letterSpacing: '0.01em' }],
-        'body-lg': ['16px', { lineHeight: '28px', letterSpacing: '0.005em' }],
+        display: ['40px', { lineHeight: '48px', letterSpacing: '-0.5px' }],
+        'headline-lg': ['28px', { lineHeight: '36px', letterSpacing: '-0.2px' }],
+        'headline-md': ['24px', { lineHeight: '32px' }],
+        'headline-sm': ['20px', { lineHeight: '28px' }],
+        'body-lg': ['17px', { lineHeight: '26px' }],
         'body-md': ['14px', { lineHeight: '22px' }],
-        'body-sm': ['12px', { lineHeight: '18px', letterSpacing: '0.01em' }],
-        'label-lg': ['14px', { lineHeight: '20px', letterSpacing: '0.01em' }],
-        'label-md': ['12px', { lineHeight: '16px', letterSpacing: '0.02em' }],
-        'label-sm': ['11px', { lineHeight: '14px', letterSpacing: '0.03em' }],
+        'body-sm': ['12px', { lineHeight: '18px' }],
+        'label-lg': ['14px', { lineHeight: '20px', letterSpacing: '0.1px' }],
+        'label-md': ['12px', { lineHeight: '16px', letterSpacing: '0.5px' }],
+        'label-sm': ['11px', { lineHeight: '16px', letterSpacing: '0.5px' }],
         'code-md': ['13px', { lineHeight: '20px' }],
         'code-sm': ['11px', { lineHeight: '16px' }],
       },
       spacing: {
         'space-xs': '4px',
         'space-sm': '8px',
-        'space-md': '16px',
-        'space-lg': '24px',
-        'space-xl': '32px',
-        'space-2xl': '48px',
-        'space-3xl': '64px',
+        'space-md': '12px',
+        'space-lg': '16px',
+        'space-xl': '24px',
+        'space-2xl': '32px',
+        'space-3xl': '48px',
       },
       borderRadius: {
-        sm: '4px',
-        DEFAULT: '8px',
-        md: '8px',
-        lg: '12px',
-        xl: '16px',
-        '2xl': '24px',
-        full: '9999px',
+        sm: '2px',
+        DEFAULT: '4px',
+        md: '6px',
+        lg: '8px',
+        xl: '12px',
+        '2xl': '16px',
+        '3xl': '24px',
       },
       boxShadow: {
-        // Fresh Emerald Elevation: Teal-Infused Hairlines (lighter)
-        'L1-card': '0 1px 3px 0 rgba(20,184,166,0.05), 0 1px 2px 0 rgba(15,23,42,0.03)',
-        'L2-popover': '0 10px 25px -5px rgba(20,184,166,0.10), 0 8px 10px -6px rgba(14,165,233,0.04)',
-        'L3-modal': '0 20px 35px -10px rgba(15,23,42,0.12)',
-        card: '0 1px 3px 0 rgba(20,184,166,0.05), 0 1px 2px 0 rgba(15,23,42,0.03)',
-        hover: '0 4px 14px rgba(20,184,166,0.12)',
-        modal: '0 20px 50px rgba(15,23,42,0.15)',
-        'emerald-glow': '0 4px 14px rgba(20,184,166,0.30)',
-        'emerald-soft': '0 2px 8px rgba(16,185,129,0.08)',
+        'L1-card': '0 1px 3px 0 rgba(31,35,48,0.08), 0 1px 2px 0 rgba(31,35,48,0.06)',
+        'L2-popover': '0 4px 12px 0 rgba(31,35,48,0.10), 0 2px 6px 0 rgba(31,35,48,0.06)',
+        'L3-modal': '0 12px 32px 0 rgba(31,35,48,0.18), 0 6px 12px 0 rgba(31,35,48,0.10)',
+        card: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        hover: '0 4px 12px rgba(0,0,0,0.08)',
+        modal: '0 20px 50px rgba(0,0,0,0.15)',
       },
       width: {
         sidebar: '240px',
@@ -150,10 +138,6 @@ export default {
       },
       maxWidth: {
         prose: '880px',
-      },
-      backgroundImage: {
-        'emerald-gradient': 'linear-gradient(135deg, #14b8a6 0%, #10b981 100%)',
-        'teal-emerald': 'linear-gradient(to bottom right, #f0fdf4, #ccfbf1)',
       },
     },
   },

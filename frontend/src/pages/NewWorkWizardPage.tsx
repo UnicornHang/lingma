@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { App } from 'antd';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   X,
   BookOpen,
@@ -23,26 +22,12 @@ import {
   Info,
 } from 'lucide-react';
 
-import { worksApi, type Genre } from '@/api/works';
-
 const STEPS = [
   { key: 'basics', label: '基础信息' },
   { key: 'genre',  label: '体裁与受众' },
   { key: 'world',  label: '世界观种子' },
   { key: 'review', label: '确认创建' },
 ];
-
-/** 向后端 Genre 枚举映射 —— 'wuxia' 与 'custom' 折叠到相近的官方分类 */
-const GENRE_TO_BACKEND: Record<string, Genre> = {
-  fantasy:    'fantasy',
-  urban:      'urban',
-  sci_fi:     'sci_fi',
-  historical: 'historical',
-  mystery:    'mystery',
-  romance:    'romance',
-  wuxia:      'fantasy',   // 武侠归入玄幻
-  custom:     'other',
-};
 
 const GENRES = [
   { key: 'fantasy',    label: '玄幻 / 修仙', desc: '修炼体系 + 异世界',  Icon: BookOpen,       checked: true },
@@ -58,21 +43,7 @@ const GENRES = [
 const SELECTED_KEYWORDS = ['热血狂飙', '杀伐果断', '严谨设定', '反转不断'];
 const CANDIDATE_KEYWORDS = ['轻松幽默', '智商在线', '群像推演', '慢热种田', '甜虐交织', '史诗气魄'];
 
-/** 将"100 万字" / "80万字" / "500000" 解析为整数，非法时返回 fallback */
-function parseWordCount(input: string, fallback = 1_000_000): number {
-  const m = input.match(/([\d.]+)/);
-  if (!m) return fallback;
-  const num = parseFloat(m[1]);
-  if (!Number.isFinite(num) || num <= 0) return fallback;
-  // 包含"万"则乘 10000
-  if (/万/.test(input)) return Math.round(num * 10_000);
-  return Math.round(num);
-}
-
 export default function NewWorkWizardPage() {
-  const navigate = useNavigate();
-  const { message } = App.useApp();
-
   const [step, setStep] = useState(1); // 0-based: 0,1,2,3
   const [audience, setAudience] = useState<'male' | 'female' | 'all'>('male');
   const [pace, setPace] = useState<'slow' | 'balanced' | 'fast'>('balanced');
@@ -80,18 +51,6 @@ export default function NewWorkWizardPage() {
     new Set(GENRES.filter((g) => g.checked).map((g) => g.key))
   );
   const [keywords, setKeywords] = useState<Set<string>>(new Set(SELECTED_KEYWORDS));
-
-  // Step 1 字段
-  const [title, setTitle] = useState('剑来·前传');
-  const [logline, setLogline] = useState('讲述陈平安从骊珠洞天走出后的一段尘缘。');
-  const [penName, setPenName] = useState('烽火戏诸侯');
-  const [volume1Name, setVolume1Name] = useState('少年游');
-
-  // Step 2 字段
-  const [chapterWords, setChapterWords] = useState('3,500');
-  const [targetTotal, setTargetTotal] = useState('100 万字');
-
-  const [submitting, setSubmitting] = useState(false);
 
   const toggleGenre = (key: string) => {
     setGenre((prev) => {
@@ -108,47 +67,6 @@ export default function NewWorkWizardPage() {
     });
   };
 
-  // 派生数据
-  const primaryGenre = useMemo<Genre>(() => {
-    const first = [...genre][0];
-    return (first && GENRE_TO_BACKEND[first]) || 'other';
-  }, [genre]);
-
-  const audienceArr = useMemo(() => {
-    if (audience === 'male') return ['男频'];
-    if (audience === 'female') return ['女频'];
-    return ['不限'];
-  }, [audience]);
-
-  const targetWordCount = useMemo(() => parseWordCount(targetTotal, 1_000_000), [targetTotal]);
-
-  /** 真正调用后端 API 创建作品 */
-  const handleCreate = async () => {
-    if (!title.trim()) {
-      message.warning('请填写作品标题');
-      setStep(0);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const created = await worksApi.create({
-        title: title.trim(),
-        genre: primaryGenre,
-        logline: logline.trim(),
-        target_word_count: targetWordCount,
-        style_keywords: [...keywords],
-        target_audience: audienceArr,
-      });
-      message.success(`作品《${created.title}》创建成功`);
-      navigate(`/works/${created.id}`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : '创建失败';
-      message.error(msg);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-auto p-6">
       {/* Modal */}
@@ -163,14 +81,12 @@ export default function NewWorkWizardPage() {
               第 {step + 1} 步 / 共 {STEPS.length} 步 · {STEPS[step].label}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate('/works')}
-            disabled={submitting}
-            className="text-outline hover:text-on-surface disabled:opacity-40"
+          <Link
+            to="/works"
+            className="text-outline hover:text-on-surface"
           >
             <X size={24} />
-          </button>
+          </Link>
         </div>
 
         {/* Stepper */}
@@ -210,18 +126,7 @@ export default function NewWorkWizardPage() {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-6">
-          {step === 0 && (
-            <StepBasics
-              title={title}
-              logline={logline}
-              penName={penName}
-              volume1Name={volume1Name}
-              onTitle={setTitle}
-              onLogline={setLogline}
-              onPenName={setPenName}
-              onVolume1Name={setVolume1Name}
-            />
-          )}
+          {step === 0 && <StepBasics />}
           {step === 1 && (
             <>
               <div className="flex flex-col gap-3">
@@ -238,7 +143,7 @@ export default function NewWorkWizardPage() {
                         onClick={() => toggleGenre(g.key)}
                         className={`p-4 rounded-xl border-2 cursor-pointer flex flex-col gap-2 text-left transition-colors ${
                           checked
-                            ? 'border-primary bg-primary-container'
+                            ? 'border-primary bg-primary-fixed'
                             : 'border-outline-variant/40 bg-surface-container-lowest hover:border-primary-container'
                         }`}
                       >
@@ -298,8 +203,7 @@ export default function NewWorkWizardPage() {
                     <div className="flex items-center px-3 h-9 rounded-lg border border-outline-variant/50 bg-surface-container-lowest font-code-md text-code-md">
                       <Hash size={18} className="text-outline" />
                       <input
-                        value={chapterWords}
-                        onChange={(e) => setChapterWords(e.target.value)}
+                        defaultValue="3,500"
                         className="flex-1 outline-none ml-2 bg-transparent font-code-md text-code-md"
                       />
                     </div>
@@ -309,8 +213,7 @@ export default function NewWorkWizardPage() {
                     <div className="flex items-center px-3 h-9 rounded-lg border border-outline-variant/50 bg-surface-container-lowest font-code-md text-code-md">
                       <Flag size={18} className="text-outline" />
                       <input
-                        value={targetTotal}
-                        onChange={(e) => setTargetTotal(e.target.value)}
+                        defaultValue="100 万字"
                         className="flex-1 outline-none ml-2 bg-transparent font-code-md text-code-md"
                       />
                     </div>
@@ -364,26 +267,8 @@ export default function NewWorkWizardPage() {
               </div>
             </>
           )}
-          {step === 2 && (
-            <StepWorld
-              protagonist="陈平安"
-              onProtagonist={() => {/* kept static */}}
-            />
-          )}
-          {step === 3 && (
-            <StepReview
-              title={title}
-              logline={logline}
-              penName={penName}
-              volume1Name={volume1Name}
-              genre={[...genre].map((k) => GENRES.find((g) => g.key === k)?.label ?? k)}
-              audience={audienceArr.join(' · ')}
-              pace={pace === 'slow' ? '慢热' : pace === 'balanced' ? '均衡' : '快节奏'}
-              chapterWords={chapterWords}
-              targetTotal={targetTotal}
-              keywords={[...keywords]}
-            />
-          )}
+          {step === 2 && <StepWorld />}
+          {step === 3 && <StepReview />}
         </div>
 
         {/* Footer */}
@@ -401,7 +286,7 @@ export default function NewWorkWizardPage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              disabled={step === 0 || submitting}
+              disabled={step === 0}
               onClick={() => setStep(Math.max(0, step - 1))}
               className="px-3 py-2 rounded-lg bg-surface-container-lowest border border-outline-variant/50 text-on-surface text-label-md disabled:opacity-40"
             >
@@ -413,22 +298,19 @@ export default function NewWorkWizardPage() {
               <button
                 type="button"
                 onClick={() => setStep(step + 1)}
-                disabled={submitting}
-                className="px-3 py-2 rounded-lg bg-primary text-white text-label-md font-medium hover:bg-primary-hover flex items-center gap-1 disabled:opacity-60"
+                className="px-3 py-2 rounded-lg bg-primary text-white text-label-md font-medium hover:bg-primary-hover flex items-center gap-1"
               >
                 <span>下一步</span>
                 <ArrowRight size={18} />
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={submitting}
-                className="px-3 py-2 rounded-lg bg-primary text-white text-label-md font-medium hover:bg-primary-hover flex items-center gap-1 disabled:opacity-60"
+              <Link
+                to="/works"
+                className="px-3 py-2 rounded-lg bg-primary text-white text-label-md font-medium hover:bg-primary-hover flex items-center gap-1"
               >
-                <span>{submitting ? '创建中…' : '创建作品'}</span>
+                <span>创建作品</span>
                 <ArrowRight size={18} />
-              </button>
+              </Link>
             )}
           </div>
         </div>
@@ -437,37 +319,21 @@ export default function NewWorkWizardPage() {
   );
 }
 
-interface StepBasicsProps {
-  title: string;
-  logline: string;
-  penName: string;
-  volume1Name: string;
-  onTitle: (v: string) => void;
-  onLogline: (v: string) => void;
-  onPenName: (v: string) => void;
-  onVolume1Name: (v: string) => void;
-}
-
-function StepBasics({
-  title, logline, penName, volume1Name,
-  onTitle, onLogline, onPenName, onVolume1Name,
-}: StepBasicsProps) {
+function StepBasics() {
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
       <h3 className="text-headline-sm font-semibold text-on-surface">基础信息</h3>
       <div className="flex flex-col gap-2">
         <label className="text-label-md text-on-surface">作品标题</label>
         <input
-          value={title}
-          onChange={(e) => onTitle(e.target.value)}
+          defaultValue="剑来·前传"
           className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
         />
       </div>
       <div className="flex flex-col gap-2">
         <label className="text-label-md text-on-surface">一句话简介 (Logline)</label>
         <textarea
-          value={logline}
-          onChange={(e) => onLogline(e.target.value)}
+          defaultValue="讲述陈平安从骊珠洞天走出后的一段尘缘。"
           className="h-24 px-3 py-2 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface resize-none focus:outline-none focus:border-primary-container"
         />
       </div>
@@ -475,16 +341,14 @@ function StepBasics({
         <div className="flex flex-col gap-2">
           <label className="text-label-md text-on-surface">主笔名</label>
           <input
-            value={penName}
-            onChange={(e) => onPenName(e.target.value)}
+            defaultValue="烽火戏诸侯"
             className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
           />
         </div>
         <div className="flex flex-col gap-2">
           <label className="text-label-md text-on-surface">第一卷名</label>
           <input
-            value={volume1Name}
-            onChange={(e) => onVolume1Name(e.target.value)}
+            defaultValue="少年游"
             className="h-10 px-3 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:border-primary-container"
           />
         </div>
@@ -493,12 +357,7 @@ function StepBasics({
   );
 }
 
-interface StepWorldProps {
-  protagonist: string;
-  onProtagonist: (v: string) => void;
-}
-
-function StepWorld({ protagonist: _protagonist, onProtagonist: _onProtagonist }: StepWorldProps) {
+function StepWorld() {
   return (
     <div className="flex flex-col gap-4 max-w-3xl">
       <h3 className="text-headline-sm font-semibold text-on-surface">世界观种子（可后续精修）</h3>
@@ -542,39 +401,22 @@ function StepWorld({ protagonist: _protagonist, onProtagonist: _onProtagonist }:
   );
 }
 
-interface StepReviewProps {
-  title: string;
-  logline: string;
-  penName: string;
-  volume1Name: string;
-  genre: string[];
-  audience: string;
-  pace: string;
-  chapterWords: string;
-  targetTotal: string;
-  keywords: string[];
-}
-
-function StepReview({
-  title, logline, penName, volume1Name,
-  genre, audience, pace, chapterWords, targetTotal, keywords,
-}: StepReviewProps) {
+function StepReview() {
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
       <div className="surface-card p-6 flex flex-col gap-3">
         <h3 className="text-headline-sm font-semibold text-on-surface pb-2 border-b border-outline-variant/40">
           即将创建
         </h3>
-        <Row label="标题" value={title || '（未填）'} />
-        <Row label="体裁" value={genre.join(', ') || '（未选）'} />
-        <Row label="受众" value={audience} />
-        <Row label="节奏" value={pace} />
-        <Row label="章节字数" value={chapterWords} />
-        <Row label="目标总字数" value={targetTotal} />
-        <Row label="风格关键词" value={keywords.join(', ') || '（未选）'} />
-        <Row label="主笔名" value={penName} />
-        <Row label="第一卷名" value={volume1Name} />
-        <Row label="一句话简介" value={logline || '（未填）'} />
+        <Row label="标题" value="剑来·前传" />
+        <Row label="体裁" value="玄幻 / 修仙, 科幻 / 末世 (2)" />
+        <Row label="受众" value="男频 · 15-35 岁" />
+        <Row label="节奏" value="均衡" />
+        <Row label="章节字数" value="3,500" />
+        <Row label="目标总字数" value="100 万字" />
+        <Row label="风格关键词" value="热血狂飙, 杀伐果断, 严谨设定, 反转不断" />
+        <Row label="主笔名" value="烽火戏诸侯" />
+        <Row label="第一卷名" value="少年游" />
       </div>
       <div className="px-3 py-2 rounded-lg bg-tertiary-container/20 text-body-sm text-on-surface-variant">
         <Info size={18} className="align-middle text-tertiary inline" />{' '}
@@ -588,7 +430,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center gap-4">
       <span className="text-label-md text-on-surface-variant w-24">{label}</span>
-      <span className="font-code-md text-on-surface break-all">{value}</span>
+      <span className="font-code-md text-on-surface">{value}</span>
     </div>
   );
 }
