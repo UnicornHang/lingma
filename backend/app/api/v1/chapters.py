@@ -136,6 +136,6 @@ async def generate_chapter_endpoint(
     return {
         "task_id": str(task.id),
         "ws_url": f"/ws/generation/{task.id}",
-        "status": task.status.value,
+        "status": task.status if isinstance(task.status, str) else task.status.value,
         "chapter_id": str(chapter_id),
     }
