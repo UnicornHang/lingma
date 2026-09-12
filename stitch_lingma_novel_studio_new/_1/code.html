@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>LingMa Novel Studio - 章节编辑</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Noto+Serif+SC:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<style>
+    @layer base {
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 1920px;
+        min-width: 1920px;
+        height: 1080px;
+        overflow-x: hidden;
+      }
+      body {
+        overscroll-behavior: none;
+      }
+    }
+    .novel-serif {
+      font-family: "Noto Serif SC", "Source Han Serif SC", SimSun, serif;
+    }
+    /* 自定义纤细优雅滚动条 */
+    .custom-scroll::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(167, 218, 206, 0.6);
+      border-radius: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: rgba(13, 148, 136, 0.6);
+    }
+  </style>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "on-surface-variant": "#3d4947",
+            "surface-container-high": "#e6f5f1",
+            "surface-container-lowest": "#ffffff",
+            "surface-container-highest": "#dcf2ec",
+            "primary-fixed": "#ccefe9",
+            "secondary": "#0284c7",
+            "surface-container": "#f0fdf9",
+            "on-primary-fixed-variant": "#004f46",
+            "on-secondary-fixed": "#082f49",
+            "on-tertiary-fixed": "#002113",
+            "surface-bright": "#fafffd",
+            "surface": "#fafffd",
+            "outline": "#6d7a77",
+            "inverse-on-surface": "#f0fdf4",
+            "on-background": "#111c1a",
+            "surface-variant": "#dcf2ec",
+            "on-tertiary-container": "#f0fdf4",
+            "tertiary-fixed": "#6ffbbe",
+            "tertiary-fixed-dim": "#4edea3",
+            "secondary-container": "#e0f2fe",
+            "on-primary-container": "#f0fdfa",
+            "on-secondary-container": "#0369a1",
+            "on-primary": "#ffffff",
+            "on-error": "#ffffff",
+            "secondary-fixed": "#bae6fd",
+            "inverse-primary": "#5eead4",
+            "on-secondary": "#ffffff",
+            "on-tertiary": "#ffffff",
+            "on-tertiary-fixed-variant": "#005236",
+            "error-container": "#ffdad6",
+            "on-primary-fixed": "#00201c",
+            "surface-dim": "#e3efe9",
+            "tertiary-container": "#059669",
+            "surface-container-low": "#f4faf7",
+            "error": "#ba1a1a",
+            "outline-variant": "#cce2dc",
+            "primary": "#0d9488",
+            "inverse-surface": "#1e2927",
+            "on-surface": "#132320",
+            "tertiary": "#10b981",
+            "background": "#fafffd",
+            "primary-container": "#0f766e",
+            "secondary-fixed-dim": "#7dd3fc",
+            "on-secondary-fixed-variant": "#075985",
+            "surface-tint": "#0d9488",
+            "primary-fixed-dim": "#99f6e4",
+            "on-error-container": "#93000a"
+          },
+          fontFamily: {
+            "body-md": ["Inter", "sans-serif"],
+            "code-md": ["JetBrains Mono", "monospace"],
+            "code-sm": ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+</head>
+<body class="bg-surface text-on-surface antialiased overflow-hidden w-[1920px] h-[1080px] flex">
+<!-- ================= 1. 全局固定侧边栏 (240px × 1080px) ================= -->
+<aside class="w-[240px] min-w-[240px] max-w-[240px] h-[1080px] flex-shrink-0 bg-surface-container-low border-r border-outline-variant/50 flex flex-col justify-between select-none z-30">
+<div class="flex flex-col w-full">
+<!-- Logo 区域 -->
+<div class="p-4 pt-5 flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-cyan-400 flex items-center justify-center shadow-md shadow-teal-700/15 text-white font-bold text-lg">
+<span class="material-symbols-outlined text-[24px]">auto_stories</span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1">
+<span class="font-bold text-[17px] tracking-tight text-on-surface">灵码·LingMa</span>
+</div>
+<span class="inline-flex items-center w-fit px-1.5 py-0.5 mt-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-mono font-medium">v0.2 本地版</span>
+</div>
+</div>
+<!-- 当前作品卡 -->
+<div class="mx-3.5 my-2.5 p-3 bg-surface-container-lowest border border-emerald-200/60 rounded-xl shadow-sm">
+<div class="flex items-center justify-between mb-1">
+<span class="text-[12px] text-on-surface-variant font-medium">当前作品</span>
+<span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200/60">35.2万字</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-[15px] text-teal-800 font-semibold truncate tracking-tight">剑来·前传</span>
+<span class="material-symbols-outlined text-teal-600 text-[18px]">menu_book</span>
+</div>
+</div>
+<!-- 导航菜单 -->
+<nav class="flex flex-col gap-4 px-2.5 mt-1">
+<!-- 创作空间 -->
+<div class="flex flex-col gap-0.5">
+<span class="px-2.5 py-1 text-[11px] font-semibold text-teal-700/70 uppercase tracking-wider">创作空间</span>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-emerald-50 hover:text-teal-900 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">folder_open</span>
+<span class="text-[13.5px] font-medium">作品库 (Works)</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-emerald-50 hover:text-teal-900 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">add_circle</span>
+<span class="text-[13.5px] font-medium">新建向导 (New Work)</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-teal-600 text-white font-semibold shadow-sm shadow-teal-600/25 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">edit_note</span>
+<span class="text-[13.5px]">章节编辑 (Editor)</span>
+</a>
+</div>
+<!-- 作品设定 -->
+<div class="flex flex-col gap-0.5">
+<span class="px-2.5 py-1 text-[11px] font-semibold text-teal-700/70 uppercase tracking-wider">作品设定</span>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-emerald-50 hover:text-teal-900 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">schema</span>
+<span class="text-[13.5px] font-medium">大纲架构 (Outline)</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-emerald-50 hover:text-teal-900 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">group</span>
+<span class="text-[13.5px] font-medium">角色档案 (Characters)</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-emerald-50 hover:text-teal-900 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">auto_stories</span>
+<span class="text-[13.5px] font-medium">世界观圣经 (World Bible)</span>
+</a>
+</div>
+</nav>
+</div>
+<!-- 底部系统设置与内核状态 -->
+<div class="p-3.5 flex flex-col gap-2 border-t border-outline-variant/40">
+<div class="flex flex-col gap-0.5">
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-on-surface-variant hover:bg-emerald-50 hover:text-teal-900 transition-colors" href="#">
+<span class="material-symbols-outlined text-[19px]">settings</span>
+<span class="text-[13px] font-medium">系统设置 (Settings)</span>
+</a>
+<a class="flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-on-surface-variant hover:bg-emerald-50 hover:text-teal-900 transition-colors" href="#">
+<span class="material-symbols-outlined text-[19px]">help</span>
+<span class="text-[13px] font-medium">使用文档 (Help)</span>
+</a>
+</div>
+<div class="mt-1 p-2 rounded-lg bg-emerald-50/80 border border-emerald-200/50 flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+<span class="font-mono text-[11px] text-teal-800 truncate">127.0.0.1:8000 活跃运行</span>
+</div>
+</div>
+</aside>
+<!-- ================= 右侧主区域 (1680px × 1080px) ================= -->
+<div class="w-[1680px] min-w-[1680px] max-w-[1680px] h-[1080px] flex flex-col flex-shrink-0">
+<!-- 2. 顶部 Header (固定 1680px × 64px) -->
+<header class="h-[64px] min-h-[64px] max-h-[64px] w-full bg-white/95 backdrop-blur border-b border-teal-100 flex items-center justify-between px-6 z-20 flex-shrink-0 select-none">
+<!-- 面包屑 & 本地离线指示器 -->
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-1.5 text-[13.5px] text-on-surface-variant">
+<span class="hover:text-teal-800 cursor-pointer">灵码工作台</span>
+<span class="text-teal-300">/</span>
+<span class="hover:text-teal-800 cursor-pointer">工作区</span>
+<span class="text-teal-300">/</span>
+<span class="text-teal-700 font-medium">剑来·前传</span>
+<span class="text-teal-300">/</span>
+<span class="text-teal-950 font-semibold">第四十二章 风起青萍</span>
+</div>
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/70 shadow-2xs">
+<span class="material-symbols-outlined text-[15px] text-emerald-600">cloud_done</span>
+<span class="text-[12px] font-medium">本地离线 (SQLite + Chroma)</span>
+</div>
+</div>
+<!-- 居中搜索框 -->
+<div class="w-[420px]">
+<div class="relative flex items-center w-full">
+<span class="material-symbols-outlined absolute left-3 text-teal-500 text-[18px]">search</span>
+<input class="w-full h-8 pl-9 pr-4 bg-emerald-50/40 border border-emerald-200/70 rounded-lg text-[13px] text-teal-950 placeholder:text-teal-600/50 focus:outline-none focus:border-teal-500 focus:bg-white focus:ring-2 focus:ring-teal-500/20 transition-all" placeholder="搜索作品、章节、角色或设定 (Cmd+K)" type="text"/>
+</div>
+</div>
+<!-- 右侧操作与状态 -->
+<div class="flex items-center gap-3.5">
+<div class="flex items-center gap-1.5 px-3 py-1 bg-teal-50/70 rounded-lg border border-teal-200/50">
+<span class="text-[12px] text-teal-800">本月推理:</span>
+<span class="font-mono text-[12px] font-semibold text-teal-700">¥42.60</span>
+<span class="text-[11px] text-sky-600 font-semibold bg-sky-50 px-1 py-0.5 rounded border border-sky-200/50">(节省92%)</span>
+</div>
+<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-teal-200 text-teal-800 text-[13px] font-medium hover:bg-emerald-50 transition-colors shadow-2xs">
+<span class="material-symbols-outlined text-[17px] text-teal-600">download</span>
+<span>导出</span>
+</button>
+<button class="relative p-1.5 text-teal-700 hover:text-teal-900 rounded-lg hover:bg-emerald-50 transition-colors">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white"></span>
+</button>
+<button class="p-1.5 text-teal-700 hover:text-teal-900 rounded-lg hover:bg-emerald-50 transition-colors">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-gradient-to-tr from-teal-600 to-emerald-500 flex items-center justify-center text-white text-[14px] font-semibold shadow-sm">
+          墨
+        </div>
+</div>
+</header>
+<!-- 3. 主体工作区 (1680px × 1016px, 横向三栏 flex, overflow-hidden) -->
+<main class="w-[1680px] h-[1016px] flex flex-row overflow-hidden bg-surface-container-low">
+<!-- ================= 【左栏 Outline 章节大纲树】(300px × 1016px) ================= -->
+<section class="w-[300px] min-w-[300px] max-w-[300px] h-full flex-shrink-0 bg-white border-r border-teal-100 flex flex-col justify-between select-none">
+<div class="flex flex-col h-[calc(100%-60px)] overflow-hidden">
+<!-- 树顶部工具条 -->
+<div class="p-3.5 border-b border-teal-100 flex flex-col gap-2.5 bg-emerald-50/20">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-teal-600 text-[19px]">account_tree</span>
+<span class="font-semibold text-[14px] text-teal-950">章节大纲</span>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 font-mono text-[11px] font-semibold border border-teal-200/60">12/36章</span>
+</div>
+<div class="relative flex items-center w-full">
+<span class="material-symbols-outlined absolute left-2.5 text-teal-500/70 text-[17px]">search</span>
+<input class="w-full h-7 pl-8 pr-2.5 bg-white border border-teal-200/60 rounded-lg text-[12px] text-teal-950 placeholder:text-teal-600/50 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-colors" placeholder="检索分卷、节拍或章名..." type="text"/>
+</div>
+</div>
+<!-- 章节树列表 -->
+<div class="flex-1 overflow-y-auto custom-scroll px-2.5 py-3 flex flex-col gap-2">
+<!-- 第一卷展开 -->
+<div class="flex items-center justify-between px-2 py-1.5 rounded-lg text-teal-900 hover:bg-emerald-50/70 cursor-pointer transition-colors">
+<div class="flex items-center gap-1 min-w-0">
+<span class="material-symbols-outlined text-[18px] text-teal-600">arrow_drop_down</span>
+<span class="text-[13px] font-semibold text-teal-950 truncate">第一卷 · 初入江湖</span>
+</div>
+<span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-mono border border-emerald-200/50">已定稿 12章</span>
+</div>
+<!-- 章节卡片列表 -->
+<div class="flex flex-col gap-1 pl-3.5 border-l-2 border-teal-200/60 ml-3">
+<!-- Ch 40 -->
+<div class="group flex items-center justify-between px-2.5 py-2 rounded-lg bg-surface-container-low hover:bg-emerald-50 cursor-pointer transition-all border border-transparent hover:border-emerald-200/50">
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-mono text-[11px] text-teal-600/70">Ch 40</span>
+<span class="text-[13px] text-teal-950 font-medium truncate">破庙夜雨</span>
+</div>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="font-mono text-[11px] text-on-surface-variant/80">3.2k 字</span>
+<span class="w-1 h-1 rounded-full bg-teal-300"></span>
+<span class="text-[11px] text-emerald-600 font-medium">已审校</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-emerald-500 text-[16px]">check_circle</span>
+</div>
+<!-- Ch 41 -->
+<div class="group flex items-center justify-between px-2.5 py-2 rounded-lg bg-surface-container-low hover:bg-emerald-50 cursor-pointer transition-all border border-transparent hover:border-emerald-200/50">
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-mono text-[11px] text-teal-600/70">Ch 41</span>
+<span class="text-[13px] text-teal-950 font-medium truncate">古剑争鸣</span>
+</div>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="font-mono text-[11px] text-on-surface-variant/80">3.5k 字</span>
+<span class="w-1 h-1 rounded-full bg-teal-300"></span>
+<span class="text-[11px] text-emerald-600 font-medium">已校对</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-emerald-500 text-[16px]">check_circle</span>
+</div>
+<!-- Ch 42 (高亮选中 - 清新碧绿) -->
+<div class="relative flex items-center justify-between px-2.5 py-2.5 rounded-lg bg-teal-500/10 border border-teal-500/30 shadow-[0_1px_6px_0_rgba(13,148,136,0.1)] cursor-pointer">
+<span class="absolute -left-[15px] top-2 bottom-2 w-1 bg-teal-600 rounded-r-full"></span>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-mono text-[11px] font-bold text-teal-700">Ch 42</span>
+<span class="text-[13px] font-bold text-teal-900 truncate">风起青萍</span>
+</div>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="font-mono text-[11px] text-teal-700 font-medium">3.4k 字</span>
+<span class="w-1 h-1 rounded-full bg-teal-500/50"></span>
+<span class="text-[11px] text-teal-700 font-semibold">当前编辑</span>
+</div>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-teal-600 text-white font-mono text-[10px] font-semibold shadow-xs">编辑中</span>
+</div>
+<!-- Ch 43 -->
+<div class="group flex items-center justify-between px-2.5 py-2 rounded-lg bg-surface-container-low/60 hover:bg-emerald-50 cursor-pointer transition-all">
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-mono text-[11px] text-teal-600/60">Ch 43</span>
+<span class="text-[13px] text-on-surface font-medium truncate">雷火试炼</span>
+</div>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="font-mono text-[11px] text-outline">节拍已锁定</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="text-[11px] text-outline">待动笔</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline text-[16px]">lock</span>
+</div>
+<!-- Ch 44 -->
+<div class="group flex items-center justify-between px-2.5 py-2 rounded-lg bg-surface-container-low/30 hover:bg-emerald-50 cursor-pointer transition-all opacity-70">
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="font-mono text-[11px] text-teal-600/60">Ch 44</span>
+<span class="text-[13px] text-on-surface font-medium truncate">云海暗涌</span>
+</div>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="font-mono text-[11px] text-outline">大纲规划中</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline text-[16px]">pending</span>
+</div>
+</div>
+</div>
+</div>
+<!-- 底部新建章节按钮 -->
+<div class="h-[60px] p-2.5 border-t border-teal-100 bg-white flex flex-col justify-center gap-1">
+<button class="w-full h-8 flex items-center justify-center gap-1.5 rounded-lg bg-teal-600 text-white text-[12.5px] font-semibold hover:bg-teal-700 transition-all shadow-sm shadow-teal-700/15">
+<span class="material-symbols-outlined text-[17px]">add_circle</span>
+<span>新建章节 / AI 拆解节拍</span>
+</button>
+<div class="flex items-center justify-between px-1 text-[11px] text-teal-700/70 font-mono">
+<span>全书共 352,800 字</span>
+<span class="hover:text-teal-700 cursor-pointer flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[13px] text-teal-600">sync</span>自动同步
+            </span>
+</div>
+</div>
+</section>
+<!-- ================= 【中栏 Editor 富文本编辑器】(880px × 1016px) ================= -->
+<section class="w-[880px] min-w-[880px] max-w-[880px] h-full flex-shrink-0 bg-white border-r border-teal-100 flex flex-col overflow-hidden">
+<!-- TipTap 工具栏 (48px) -->
+<div class="h-[48px] min-h-[48px] max-h-[48px] px-4 flex items-center justify-between border-b border-teal-100 bg-white select-none z-10">
+<div class="flex items-center gap-0.5">
+<button class="w-7 h-7 rounded hover:bg-emerald-50 flex items-center justify-center text-teal-800 hover:text-teal-950" title="加粗">
+<span class="material-symbols-outlined text-[17px]">format_bold</span>
+</button>
+<button class="w-7 h-7 rounded hover:bg-emerald-50 flex items-center justify-center text-teal-800 hover:text-teal-950" title="斜体">
+<span class="material-symbols-outlined text-[17px]">format_italic</span>
+</button>
+<button class="w-7 h-7 rounded hover:bg-emerald-50 flex items-center justify-center text-teal-800 hover:text-teal-950" title="划线">
+<span class="material-symbols-outlined text-[17px]">strikethrough_s</span>
+</button>
+<span class="w-[1px] h-3.5 bg-teal-200 mx-1"></span>
+<button class="h-6 px-1.5 rounded hover:bg-emerald-50 flex items-center justify-center text-teal-800 font-mono text-[11px] font-bold" title="H1">H1</button>
+<button class="h-6 px-1.5 rounded hover:bg-emerald-50 flex items-center justify-center text-teal-800 font-mono text-[11px] font-bold" title="H2">H2</button>
+<button class="w-7 h-7 rounded hover:bg-emerald-50 flex items-center justify-center text-teal-800 hover:text-teal-950" title="引用">
+<span class="material-symbols-outlined text-[17px]">format_quote</span>
+</button>
+<button class="w-7 h-7 rounded hover:bg-emerald-50 flex items-center justify-center text-teal-800 hover:text-teal-950" title="无序列表">
+<span class="material-symbols-outlined text-[17px]">format_list_bulleted</span>
+</button>
+<button class="w-7 h-7 rounded hover:bg-emerald-50 flex items-center justify-center text-teal-800 hover:text-teal-950" title="代码块">
+<span class="material-symbols-outlined text-[17px]">code</span>
+</button>
+<span class="w-[1px] h-3.5 bg-teal-200 mx-1"></span>
+<button class="flex items-center gap-1 px-2 py-1 rounded bg-teal-50 hover:bg-teal-100 text-teal-800 text-[11.5px] font-medium border border-teal-200/70" title="对白排版">
+<span class="material-symbols-outlined text-[15px] text-teal-600">chat</span>
+<span>对白排版</span>
+</button>
+<button class="flex items-center gap-1 px-2 py-1 rounded bg-sky-50 hover:bg-sky-100 text-sky-800 text-[11.5px] font-medium border border-sky-200/70" title="Diff比对">
+<span class="material-symbols-outlined text-[15px] text-sky-600">difference</span>
+<span>Diff 对比</span>
+</button>
+</div>
+<!-- 版本选择与字数统计 -->
+<div class="flex items-center gap-2.5">
+<div class="flex items-center bg-teal-50/70 rounded-md px-2 py-0.5 border border-teal-200 cursor-pointer hover:bg-teal-100 text-[11.5px]">
+<span class="material-symbols-outlined text-[14px] text-teal-600 mr-1">history</span>
+<span class="font-mono font-medium text-teal-900">v3 (最新)</span>
+<span class="material-symbols-outlined text-[14px] text-teal-600 ml-1">arrow_drop_down</span>
+</div>
+<div class="flex items-center gap-1.5 bg-emerald-50/70 px-2 py-0.5 rounded-md border border-emerald-200/70 text-[11.5px]">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+<span class="font-mono font-semibold text-teal-950">3,420</span>
+<span class="font-mono text-teal-700/70">/ 5,000字</span>
+</div>
+</div>
+</div>
+<!-- 章节内容主体 (720px 内容宽度居中，高度 100% 垂直滚动) -->
+<div class="flex-1 overflow-y-auto custom-scroll px-14 py-8 flex flex-col items-center bg-[#fdfefe]">
+<div class="w-[720px] max-w-[720px] flex flex-col">
+<!-- 章节头部元信息 -->
+<div class="flex flex-col gap-1.5 pb-4 mb-6 border-b border-teal-100">
+<div class="flex items-center justify-between text-[11.5px] font-mono">
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 rounded bg-teal-100/70 text-teal-800 font-bold tracking-wider border border-teal-200/70">CHAPTER 42</span>
+<span class="text-teal-300">·</span>
+<span class="text-emerald-700 font-semibold flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>节拍进度: 114% 超额达标
+</span>
+</div>
+<div class="flex items-center gap-1 text-teal-700/70">
+<span class="material-symbols-outlined text-[13px] text-teal-600">save</span>
+<span>2分钟前自动落盘至 SQLite</span>
+</div>
+</div>
+<h1 class="text-[26px] font-bold text-teal-950 tracking-tight mt-1 novel-serif">
+                第四十二章 风起青萍
+              </h1>
+</div>
+<!-- 正文排版 (宋体排版，高阅读舒适度，行高宽松) -->
+<article class="flex flex-col gap-5 text-neutral-800 novel-serif text-[16px] leading-[2.1] tracking-[0.02em] select-text">
+<p class="indent-8 text-neutral-800">
+                林墨独行于青石山道，薄暮时分，残阳如血，将他背后的重剑与瘦削身材拉得极长。秋风掠过林梢，卷起漫天赤红的枫叶，簌簌落在一旁的断碑之上。他微闭着眸子，周身隐隐有细微的剑气吞吐不定，丹田处隐匿的旧伤在寒气侵袭下泛起轻微刺痛。
+              </p>
+<p class="indent-8 text-neutral-800">
+                身后忽然传来一阵略显急促的脚步声，夹杂着清脆的剑鞘碰撞声。云浩快步追上，红缨长枪斜挎在肩头，额角沁着细汗，爽朗的声音打破了荒山的死寂：“林兄！你脚程也太快了，方才在古亭饮尽那一坛梨花白，转眼便不见了人影。”
+              </p>
+<p class="indent-8 text-neutral-800">
+                林墨驻足回首，眸光沉静如寒潭之水，右手无意识地轻摩着剑柄上的磨损痕迹。他并未立刻接话，只是凝视着天际翻滚的紫黑色暮云，那是魔道修士祭炼百魂幡时才会引动的征兆。
+              </p>
+<!-- ================= 行内 Editor Agent 审校建议卡片 (亮绿清新调) ================= -->
+<div class="my-3 p-4 rounded-xl bg-gradient-to-br from-emerald-50/90 via-teal-50/70 to-white border border-teal-200 shadow-[0_4px_16px_rgba(13,148,136,0.08)] flex flex-col gap-3 font-sans">
+<!-- 建议头部 -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-5 h-5 rounded-md bg-teal-600 flex items-center justify-center text-white shadow-xs">
+<span class="material-symbols-outlined text-[14px]">auto_awesome</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="font-bold text-[13px] text-teal-800">Editor Agent 审校建议</span>
+<span class="text-teal-300 text-[12px]">·</span>
+<span class="text-[12px] text-teal-700 font-medium">细节与伏笔强化</span>
+</div>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono text-[11px] font-bold border border-emerald-200">
+                    置信度 96.4%
+                  </span>
+</div>
+<!-- 对比区 -->
+<div class="flex flex-col gap-2 p-3 rounded-lg bg-white border border-teal-100 text-[13.5px] leading-relaxed shadow-2xs">
+<div class="flex items-start gap-2 text-outline line-through">
+<span class="px-1.5 py-0.5 rounded bg-error-container/50 text-error font-mono text-[10px] font-semibold flex-shrink-0">原句</span>
+<span>林墨驻足回首，眸光沉静如寒潭之水，右手无意识地轻摩着剑柄上的磨损痕迹。</span>
+</div>
+<div class="flex items-start gap-2 text-teal-950">
+<span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[10px] font-bold flex-shrink-0 border border-emerald-200">建议</span>
+<span class="bg-emerald-100/70 text-emerald-950 rounded px-1.5 py-0.5 font-medium border-b border-emerald-300">
+                      林墨驻足侧身，眼神如古井无波。他食指指腹轻轻拂过那道三寸深的新创，那是宗门剧变那夜留下的烙印；随后右手按上沉渊剑柄，指节因用力泛出冷白。
+                    </span>
+</div>
+</div>
+<!-- 理由 -->
+<div class="flex items-center gap-1.5 text-teal-800 text-[12px]">
+<span class="material-symbols-outlined text-[15px] text-teal-600">info</span>
+<span>理由：强化主角冷峻克制神态，埋设指腹旧创与宗门剧变因果伏笔，呼应第39章设定。</span>
+</div>
+<!-- 按钮组 -->
+<div class="flex items-center justify-end gap-2 pt-1">
+<button class="px-3 py-1 rounded-lg text-teal-700/70 hover:bg-emerald-100/60 hover:text-teal-900 text-[12px] transition-colors">
+                    忽略本次建议
+                  </button>
+<button class="px-3 py-1 rounded-lg bg-white border border-teal-200 text-teal-800 hover:bg-emerald-50 text-[12px] font-medium shadow-2xs transition-colors">
+                    还原前文版本
+                  </button>
+<button class="px-3.5 py-1 rounded-lg bg-teal-600 text-white text-[12px] font-semibold hover:bg-teal-700 transition-colors shadow-sm shadow-teal-600/25 flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">check</span>
+<span>一键采纳</span>
+</button>
+</div>
+</div>
+<p class="indent-8 text-neutral-800">
+                “天黑之前必须赶到枯木峡。”林墨收回视线，声音平静如刀切豆腐，没有多余的起伏，“苏姑娘在峡内留下了暗记，若是迟了，赤炎蟒的蜕皮期便要过了。”
+              </p>
+<p class="indent-8 text-neutral-800">
+                云浩闻言神色一肃，握紧了手中长枪，沉声道：“她孤身深入险境，悬壶堂的那群叛徒定然也盯上了这枚妖丹。走，我们抄近道！”
+              </p>
+</article>
+<!-- 底部 Writer Agent 续写唤起输入条 -->
+<div class="mt-8 mb-6 p-3 rounded-xl bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border border-teal-200/80 flex items-center justify-between shadow-xs font-sans">
+<div class="flex items-center gap-2.5">
+<span class="w-2 h-2 rounded-full bg-teal-500 animate-ping"></span>
+<div class="flex items-center gap-1.5 text-[12.5px] text-teal-900">
+<span class="font-bold text-teal-700">Writer Agent</span>
+<span class="text-teal-800">准备续写下文情境...</span>
+<span class="px-2 py-0.5 rounded bg-white text-teal-900 font-mono text-[11px] border border-teal-200 font-medium">/ai 唤起指令</span>
+</div>
+</div>
+<div class="flex items-center gap-1.5 text-[11.5px] text-teal-700">
+<kbd class="px-1.5 py-0.5 rounded bg-white text-teal-800 font-mono border border-teal-200 shadow-2xs font-semibold">Tab</kbd>
+<span>采纳续写建议</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- ================= 【右栏 Context 上下文与 6-Agent 协同栏】(500px × 1016px) ================= -->
+<section class="w-[500px] min-w-[500px] max-w-[500px] h-full flex-shrink-0 bg-[#f4faf7] border-l border-teal-100 flex flex-col overflow-hidden">
+<!-- 栏头 -->
+<div class="h-[48px] min-h-[48px] max-h-[48px] px-5 flex items-center justify-between border-b border-teal-100 bg-[#f4faf7] select-none flex-shrink-0">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-teal-600 text-[19px]">hub</span>
+<h2 class="font-semibold text-[14px] text-teal-950">上下文与 Agent 协同</h2>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono text-[11px] font-semibold border border-emerald-200">
+              6-Agent 实时监听
+            </span>
+</div>
+</div>
+<!-- 协同卡片列表 (可独立垂直平滑滚动) -->
+<div class="flex-1 overflow-y-auto custom-scroll p-5 flex flex-col gap-4">
+<!-- Section 1: 当前节拍卡 -->
+<div class="p-4 rounded-xl bg-white border border-teal-100 shadow-xs flex flex-col gap-2.5">
+<div class="flex items-center justify-between">
+<span class="text-[11px] font-semibold uppercase tracking-wider text-teal-700/70">当前主线节拍 (Story Beat)</span>
+<span class="px-2 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[11px] font-semibold border border-teal-200">节点 3/5</span>
+</div>
+<div class="flex flex-col gap-1">
+<span class="font-bold text-[14.5px] text-teal-950">探查枯木峡 · 冲突起因</span>
+<p class="text-[12.5px] text-teal-800 leading-relaxed">
+                两名核心主角在枯木峡外汇合，遭遇悬壶堂暗哨刺杀，揭露妖丹争夺真相，促使主角破例施展筑基剑诀。
+              </p>
+</div>
+<div class="flex items-center gap-2 pt-1">
+<span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-medium border border-emerald-200/50">开场铺垫</span>
+<span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 text-[11px] font-bold border border-teal-200">核心钩子</span>
+<span class="px-2 py-0.5 rounded bg-sky-50 text-sky-700 text-[11px] font-medium border border-sky-200/50">伏笔埋设</span>
+</div>
+</div>
+<!-- Section 2: 本章登场人物卡 -->
+<div class="flex flex-col gap-2">
+<div class="flex items-center justify-between px-0.5">
+<span class="text-[11px] font-semibold uppercase tracking-wider text-teal-700/70">本章登场角色 (In Chapter)</span>
+<span class="text-[11px] font-mono text-teal-700 cursor-pointer hover:underline font-semibold">管理关系网</span>
+</div>
+<div class="flex flex-col gap-2">
+<!-- 人物 1: 林墨 -->
+<div class="p-3 rounded-xl bg-white border border-teal-100 shadow-xs flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-9 h-9 rounded-full bg-teal-100 text-teal-800 border border-teal-200 flex items-center justify-center font-bold text-[14px]">
+                    墨
+                  </div>
+<div class="flex flex-col">
+<div class="flex items-center gap-2">
+<span class="text-[13.5px] font-semibold text-teal-950">林墨</span>
+<span class="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-mono text-[10px] font-medium">主角 / INTJ</span>
+</div>
+<span class="text-[11.5px] text-teal-700 mt-0.5">状态: 隐匿丹田剑伤 · 沉渊重剑</span>
+</div>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-mono text-[11.5px] text-emerald-600 font-bold">语气 100%</span>
+<span class="text-[10.5px] text-teal-600/70">高度拟合</span>
+</div>
+</div>
+<!-- 人物 2: 云浩 -->
+<div class="p-3 rounded-xl bg-white border border-teal-100 shadow-xs flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-9 h-9 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center justify-center font-bold text-[14px]">
+                    浩
+                  </div>
+<div class="flex flex-col">
+<div class="flex items-center gap-2">
+<span class="text-[13.5px] font-semibold text-teal-950">云浩</span>
+<span class="px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 font-mono text-[10px] font-medium">重要配角 / ESTP</span>
+</div>
+<span class="text-[11.5px] text-teal-700 mt-0.5">特质: 豪迈破局 · 武器: 赤霞灵枪</span>
+</div>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-mono text-[11.5px] text-emerald-600 font-bold">语气 98%</span>
+<span class="text-[10.5px] text-teal-600/70">符合人设</span>
+</div>
+</div>
+<!-- 人物 3: 苏婉 -->
+<div class="p-3 rounded-xl bg-white border border-teal-100 shadow-xs flex items-center justify-between opacity-90">
+<div class="flex items-center gap-3">
+<div class="w-9 h-9 rounded-full bg-cyan-50 text-cyan-800 border border-cyan-200 flex items-center justify-center font-bold text-[14px]">
+                    婉
+                  </div>
+<div class="flex flex-col">
+<div class="flex items-center gap-2">
+<span class="text-[13.5px] font-semibold text-teal-950">苏婉</span>
+<span class="px-1.5 py-0.2 rounded bg-teal-50 text-teal-700 font-mono text-[10px] font-medium border border-teal-200/50">女主 · 暗线 / INFJ</span>
+</div>
+<span class="text-[11.5px] text-teal-700 mt-0.5">身份: 悬壶堂少主 · 待出场</span>
+</div>
+</div>
+<span class="font-mono text-[10.5px] text-sky-700 px-2 py-0.5 rounded bg-sky-50 border border-sky-200/50">暗线呼应</span>
+</div>
+</div>
+</div>
+<!-- Section 3: 设定圣经速查 (World Bible Card) -->
+<div class="p-4 rounded-xl bg-white border border-teal-100 shadow-xs flex flex-col gap-2.5">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-emerald-600 text-[17px]">verified</span>
+<span class="font-semibold text-[13.5px] text-teal-950">世界观设定校验 (Bible)</span>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono text-[11px] font-bold border border-emerald-200">无冲突</span>
+</div>
+<div class="p-2.5 rounded-lg bg-teal-50/50 text-[12px] text-teal-900 border border-teal-100 flex flex-col gap-1">
+<div class="font-semibold text-teal-950 flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-teal-600">gavel</span>
+<span>法则：筑基御剑禁忌</span>
+</div>
+<p class="leading-relaxed">下品灵根者在未化煞凝丹前，严禁连出三道以上青萍剑罡，否则引动脉络反噬。本章主角拔剑示警符合底层物理法则。</p>
+</div>
+<div class="flex items-center justify-between text-[11.5px] text-teal-700/80 pt-0.5 px-0.5">
+<span>势力关联: 青云剑宗 / 万妖岭</span>
+<span class="text-teal-700 font-semibold cursor-pointer hover:underline">查阅词条</span>
+</div>
+</div>
+<!-- Section 4: 伏笔追踪卡 (Foreshadowing Card) -->
+<div class="p-4 rounded-xl bg-white border border-teal-100 shadow-xs flex flex-col gap-2.5">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="text-[15px]">🔮</span>
+<span class="font-semibold text-[13.5px] text-teal-950">伏笔追踪与回收</span>
+</div>
+<span class="font-mono text-[11px] text-sky-700 font-semibold">规划至第45章</span>
+</div>
+<div class="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-200/60 flex flex-col gap-1">
+<div class="flex items-center justify-between">
+<span class="font-semibold text-[12.5px] text-teal-950">埋设 · 赤炎蟒蜕皮伏笔</span>
+<span class="text-[10.5px] font-mono text-emerald-800 font-bold bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200">关联第39章</span>
+</div>
+<p class="text-[11.5px] text-teal-800 leading-relaxed">
+                云浩所提赤炎蟒妖丹，计划在第45章炼化，作为化解林墨丹田旧剑伤的关键药引。
+              </p>
+</div>
+</div>
+<!-- Section 5: Critic 读者多视角测评画像 -->
+<div class="p-4 rounded-xl bg-white border border-teal-100 shadow-xs flex flex-col gap-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-teal-600 text-[17px]">speed</span>
+<span class="font-semibold text-[13.5px] text-teal-950">Critic 读者多视角测评</span>
+</div>
+<div class="flex items-baseline gap-0.5">
+<span class="font-bold text-[18px] text-teal-700">8.8</span>
+<span class="font-mono text-[11px] text-teal-600/70">/ 10</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-2.5">
+<div class="p-2 rounded-lg bg-emerald-50/50 border border-emerald-100 flex flex-col">
+<div class="flex items-center justify-between text-[11.5px]">
+<span class="text-teal-900 font-medium">爽文党画像</span>
+<span class="font-mono font-bold text-emerald-600">9.0</span>
+</div>
+<div class="w-full h-1.5 bg-emerald-100 rounded-full mt-1.5 overflow-hidden">
+<div class="h-full bg-emerald-500 rounded-full" style="width: 90%;"></div>
+</div>
+</div>
+<div class="p-2 rounded-lg bg-sky-50/50 border border-sky-100 flex flex-col">
+<div class="flex items-center justify-between text-[11.5px]">
+<span class="text-teal-900 font-medium">考据党画像</span>
+<span class="font-mono font-bold text-sky-600">8.5</span>
+</div>
+<div class="w-full h-1.5 bg-sky-100 rounded-full mt-1.5 overflow-hidden">
+<div class="h-full bg-sky-500 rounded-full" style="width: 85%;"></div>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-1.5 text-teal-800 text-[11.5px] pt-0.5">
+<span class="material-symbols-outlined text-[15px] text-emerald-600">insights</span>
+<span>情绪节拍平稳上扬，建议在段末提升暗哨杀机张力。</span>
+</div>
+</div>
+</div>
+</section>
+</main>
+</div>
+<script>
+    // 快捷交互逻辑
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Tab') {
+        const writerAgentBar = document.querySelector('.animate-ping');
+        if (writerAgentBar) {
+          e.preventDefault();
+          const target = writerAgentBar.closest('.flex.items-center.justify-between');
+          if (target) {
+            target.classList.toggle('bg-teal-600');
+            target.classList.toggle('text-white');
+          }
+        }
+      }
+    });
+  </script>
+</body></html>

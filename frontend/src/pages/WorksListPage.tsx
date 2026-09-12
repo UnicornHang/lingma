@@ -33,10 +33,10 @@ const STATUS_CHIP: Record<string, { label: string; cls: string; icon?: React.Rea
 };
 
 const STATUS_GRADIENT: Record<string, string> = {
-  writing:  'from-primary to-[#7A7DEF]',
-  finished: 'from-[#B3261E] to-[#7C1B16]',
-  draft:    'from-[#6B5778] to-[#3F3354]',
-  archived: 'from-[#7C5800] to-[#5C4200]',
+  writing:  'from-[#14b8a6] to-[#10b981]',     // Teal → Emerald (light)
+  finished: 'from-[#34d399] to-[#059669]',     // Bright emerald → deep emerald
+  draft:    'from-[#94a3b8] to-[#475569]',     // Slate gradient
+  archived: 'from-[#38bdf8] to-[#0369a1]',     // Sky blue (archived = secondary status)
 };
 
 function WorkCard({ work }: { work: Work }) {
@@ -48,7 +48,8 @@ function WorkCard({ work }: { work: Work }) {
   const targetWan = (work.target_word_count / 10000).toFixed(0);
 
   return (
-    <div
+    <Link
+      to={`/works/${work.id}`}
       className={`overflow-hidden flex flex-col ${
         isCurrent ? 'surface-card-active' : 'surface-card'
       } hover:border-primary-container transition-colors cursor-pointer`}
@@ -96,7 +97,7 @@ function WorkCard({ work }: { work: Work }) {
           <span>2 小时前</span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -150,6 +151,10 @@ export default function WorksListPage() {
             status: 'writing',
             word_count: 352000,
             target_word_count: 1000000,
+            logline: '讲述陈平安从骊珠洞天走出后的一段尘缘。',
+            style_keywords: ['热血狂飙', '杀伐果断'],
+            target_audience: ['男频'],
+            settings: {},
             created_at: '',
             updated_at: '',
           },
@@ -160,6 +165,10 @@ export default function WorksListPage() {
             status: 'writing',
             word_count: 287000,
             target_word_count: 600000,
+            logline: '一群海洋生物学家发现深海中传出的不明信号。',
+            style_keywords: ['严谨设定', '反转不断'],
+            target_audience: ['不限'],
+            settings: {},
             created_at: '',
             updated_at: '',
           },
@@ -170,6 +179,10 @@ export default function WorksListPage() {
             status: 'finished',
             word_count: 421000,
             target_word_count: 400000,
+            logline: '盛唐之下，街市间的暗流与灯火交织。',
+            style_keywords: ['史诗气魄', '群像推演'],
+            target_audience: ['不限'],
+            settings: {},
             created_at: '',
             updated_at: '',
           },
@@ -180,6 +193,10 @@ export default function WorksListPage() {
             status: 'writing',
             word_count: 184000,
             target_word_count: 500000,
+            logline: '荒岛求生之中，真相在每个人手中翻牌。',
+            style_keywords: ['智商在线', '反转不断'],
+            target_audience: ['男频'],
+            settings: {},
             created_at: '',
             updated_at: '',
           },
