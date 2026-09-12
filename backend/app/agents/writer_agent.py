@@ -1,10 +1,15 @@
 """Writer Agent - 章节正文写作（真实 LLM 接入版）
 
 工作流：
-1. 加载上下文（作品 / 章节 / 大纲 / 世界书 / 角色）
+1. 加载上下文（作品 / 章节 / 大纲 / 同卷大纲 / 世界书 / 角色）
 2. 由 `prompts.writer_prompts` 组装 system+user 消息
 3. 调用 `LLMService.stream()` 产出 delta
 4. 不在此处持久化 —— 由上层（ws handler）负责保存章节
+
+[P3 增强] build_messages 现在支持 ``outline_node_id`` 显式参数,并:
+- 同卷(同 parent_id)其他章节大纲注入
+- 本章相关角色优先(按 outline.characters_involved 匹配已有 Character)
+- 本章相关世界条目作为强提示注入
 """
 from __future__ import annotations
 
@@ -18,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.base import BaseAgent
 from app.models.character import Character
 from app.models.chapter import Chapter
-from app.models.outline import OutlineNode
+from app.models.outline import OutlineNode, OutlineNodeType
 from app.models.work import Work
 from app.models.world import WorldBible
 from app.prompts.writer_prompts import build_system_prompt, build_user_prompt
@@ -61,11 +66,13 @@ class WriterAgent(BaseAgent):
         override_messages: list[LLMMessage] | None = None,
         temperature: float = 0.85,
         max_tokens: int = 4096,
+        outline_node_id: UUID | None = None,
     ) -> AsyncIterator[str]:
         """流式生成章节正文。
 
         - ``override_messages`` 用于调试/单测直接注入 prompt，跳过 DB 加载
         - ``cfg=None`` 时 LLMService 自动回退到 mock
+        - ``outline_node_id`` 显式覆盖（可选,默认从 chapter.outline_node_id 取）
         """
         llm = get_llm_service()
         if override_messages is not None:
@@ -81,12 +88,13 @@ class WriterAgent(BaseAgent):
                 yield delta
             return
 
-        # ===== 加载上下文 =====
+        # ===== 加载上下文（精细化版本）=====
         chapter = await _load_chapter(db, chapter_id)
         work = await _load_work(db, chapter.work_id)
-        outline = await _load_outline_node(db, chapter.outline_node_id) if chapter.outline_node_id else None
+        outline = await _load_outline_node(db, outline_node_id or chapter.outline_node_id)
         world = await _maybe_load_world(db, chapter.work_id)
-        characters = await _load_characters(db, chapter.work_id)
+        characters = await _load_focused_characters(db, chapter.work_id, outline)
+        same_volume_outline = await _load_same_volume_outline(db, outline)
         previous_summary = await _load_previous_chapter_summary(db, chapter)
 
         target_words = (
@@ -102,6 +110,8 @@ class WriterAgent(BaseAgent):
             world=world,
             characters=characters,
             previous_summary=previous_summary,
+            same_volume_outline=same_volume_outline,
+            world_refs=(outline.world_refs if outline else None),
         )
         messages = [LLMMessage(role="system", content=system), LLMMessage(role="user", content=user)]
 
@@ -114,8 +124,13 @@ class WriterAgent(BaseAgent):
             stream=True,
         )
         logger.info(
-            "WriterAgent stream 启动: chapter=%s, model=%s, target=%s字",
-            chapter_id, model_name, target_words,
+            "WriterAgent stream 启动: chapter=%s, outline=%s, model=%s, target=%s字, 同卷章=%d, 聚焦角色=%d",
+            chapter_id,
+            outline.id if outline else None,
+            model_name,
+            target_words,
+            len(same_volume_outline),
+            len(characters),
         )
         async for delta in llm.stream(req, cfg):
             yield delta
@@ -130,6 +145,7 @@ class WriterAgent(BaseAgent):
         mode: Literal["continue", "generate"] = "generate",
         continue_from_chars: int = 1500,
         target_word_count: int | None = None,
+        outline_node_id: UUID | None = None,
     ) -> tuple[list[LLMMessage], str, str]:
         """加载上下文并装配 system + user 消息。
 
@@ -137,16 +153,19 @@ class WriterAgent(BaseAgent):
         - ``mode="continue"`` 且章节有 plain_content 时,会取末尾 N 字作为 existing_tail
         - ``mode="continue"`` 且章节为空时,降级为 ``generate`` 语义(避免给 LLM 看空块)
         - ``target_word_count``(来自请求)优先于 outline 默认值
+        - ``outline_node_id``(来自请求)优先于 chapter.outline_node_id
         """
         chapter = await _load_chapter(db, chapter_id)
         work = await _load_work(db, chapter.work_id)
+        resolved_outline_id = outline_node_id or chapter.outline_node_id
         outline = (
-            await _load_outline_node(db, chapter.outline_node_id)
-            if chapter.outline_node_id
+            await _load_outline_node(db, resolved_outline_id)
+            if resolved_outline_id
             else None
         )
         world = await _maybe_load_world(db, chapter.work_id)
-        characters = await _load_characters(db, chapter.work_id)
+        characters = await _load_focused_characters(db, chapter.work_id, outline)
+        same_volume_outline = await _load_same_volume_outline(db, outline)
         previous_summary = await _load_previous_chapter_summary(db, chapter)
 
         # 计算有效目标字数:请求 > outline > 默认 3000
@@ -180,16 +199,20 @@ class WriterAgent(BaseAgent):
             previous_summary=previous_summary,
             existing_tail=existing_tail,
             target_word_count=effective_target,
+            same_volume_outline=same_volume_outline,
+            world_refs=(outline.world_refs if outline else None),
         )
         messages = [
             LLMMessage(role="system", content=system),
             LLMMessage(role="user", content=user),
         ]
         logger.info(
-            "WriterAgent build_messages: chapter=%s, mode=%s, target=%s字",
+            "WriterAgent build_messages: chapter=%s, mode=%s, target=%s字, 同卷章=%d, 聚焦角色=%d",
             chapter_id,
             effective_mode,
             effective_target,
+            len(same_volume_outline),
+            len(characters),
         )
         return messages, "mock", user
 
@@ -213,7 +236,9 @@ async def _load_work(db: AsyncSession, work_id: UUID) -> Work:
     return w
 
 
-async def _load_outline_node(db: AsyncSession, node_id: UUID) -> OutlineNode | None:
+async def _load_outline_node(db: AsyncSession, node_id: UUID | None) -> OutlineNode | None:
+    if not node_id:
+        return None
     r = await db.execute(select(OutlineNode).where(OutlineNode.id == node_id))
     return r.scalar_one_or_none()
 
@@ -225,7 +250,71 @@ async def _maybe_load_world(db: AsyncSession, work_id: UUID) -> WorldBible | Non
         return None
 
 
+async def _load_focused_characters(
+    db: AsyncSession,
+    work_id: UUID,
+    outline: OutlineNode | None,
+    *,
+    fallback_limit: int = 8,
+) -> list[Character]:
+    """根据 outline.characters_involved 精细筛选角色;缺失时降级到 work_id 取前 N。
+
+    返回顺序:聚焦角色(按 outline 列表顺序)在前,补充角色在后。
+    """
+    if outline and outline.characters_involved:
+        names = [n for n in outline.characters_involved if n]
+        if names:
+            # 1) 精确匹配 (name == ?)
+            stmt = select(Character).where(
+                Character.work_id == work_id,
+                Character.name.in_(names),
+            )
+            focused = list((await db.execute(stmt)).scalars().all())
+            if focused:
+                # 按 outline 列表顺序排序
+                name_to_idx = {n: i for i, n in enumerate(names)}
+                focused.sort(key=lambda c: name_to_idx.get(c.name, 9999))
+                # 2) 若未达到 fallback_limit,补充 work 下其他角色
+                if len(focused) < fallback_limit:
+                    extra_stmt = (
+                        select(Character)
+                        .where(
+                            Character.work_id == work_id,
+                            ~Character.id.in_([c.id for c in focused]),
+                        )
+                        .limit(fallback_limit - len(focused))
+                    )
+                    extra = list((await db.execute(extra_stmt)).scalars().all())
+                    focused.extend(extra)
+                return focused[:fallback_limit]
+    # 降级路径
+    return await _load_characters(db, work_id, limit=fallback_limit)
+
+
+async def _load_same_volume_outline(
+    db: AsyncSession,
+    outline: OutlineNode | None,
+) -> list[OutlineNode]:
+    """加载同卷(同 parent_id)其他章节大纲,作为上下文连贯性参考。
+
+    仅取 type=chapter 的同级节点,按 order 排序。
+    """
+    if outline is None or outline.parent_id is None:
+        return []
+    r = await db.execute(
+        select(OutlineNode)
+        .where(
+            OutlineNode.parent_id == outline.parent_id,
+            OutlineNode.id != outline.id,
+            OutlineNode.type == OutlineNodeType.CHAPTER,
+        )
+        .order_by(OutlineNode.order.asc(), OutlineNode.created_at.asc())
+    )
+    return list(r.scalars().all())
+
+
 async def _load_characters(db: AsyncSession, work_id: UUID, limit: int = 8) -> list[Character]:
+    """降级:按 work_id 取前 N 个角色(保留旧行为)。"""
     r = await db.execute(
         select(Character).where(Character.work_id == work_id).limit(limit)
     )

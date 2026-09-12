@@ -78,3 +78,50 @@ async def test_create_chapter_invalid_work(client):
         },
     )
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_chapter_versions_empty(client):
+    """新建章节还没有任何 ChapterVersion → 应返回 total=0 items=[]"""
+    work_id = await _create_work(client)
+    r = await client.post(
+        "/api/v1/chapters/",
+        json={"work_id": work_id, "title": "无版本章节", "plain_content": "初稿"},
+    )
+    chapter_id = r.json()["id"]
+
+    rv = await client.get(f"/api/v1/chapters/{chapter_id}/versions")
+    assert rv.status_code == 200, rv.text
+    data = rv.json()
+    assert data["total"] == 0
+    assert data["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_chapter_versions_after_update(client):
+    """多次 PATCH 章节 → 列表仍为空（PATCH 不写 ChapterVersion，只有 AI 续写会写）。
+    这样保证版本历史只反映 AI 产出，避免被人工编辑稀释。"""
+    work_id = await _create_work(client)
+    r = await client.post(
+        "/api/v1/chapters/",
+        json={"work_id": work_id, "title": "版本测试", "plain_content": "v0"},
+    )
+    chapter_id = r.json()["id"]
+
+    # 两次 PATCH —— 应都不写 ChapterVersion
+    for new_text in ["v1 content", "v2 content"]:
+        rp = await client.patch(f"/api/v1/chapters/{chapter_id}", json={"plain_content": new_text})
+        assert rp.status_code == 200
+
+    rv = await client.get(f"/api/v1/chapters/{chapter_id}/versions")
+    assert rv.status_code == 200, rv.text
+    data = rv.json()
+    assert data["total"] == 0
+    assert data["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_chapter_versions_invalid_chapter(client):
+    """chapter_id 不存在 → 404"""
+    rv = await client.get("/api/v1/chapters/00000000-0000-0000-0000-000000000000/versions")
+    assert rv.status_code == 404

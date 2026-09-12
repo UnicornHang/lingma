@@ -169,6 +169,14 @@ async def _handle_start(
             mode = "generate"
         continue_from_chars = int(params.get("continue_from_chars", 1500))
         target_word_count = params.get("target_word_count")
+        # [P3 增强] 读取 outline_node_id(可选);若前端未传,WriterAgent 内 fallback 到 chapter.outline_node_id
+        outline_node_id = params.get("outline_node_id")
+        if isinstance(outline_node_id, str):
+            try:
+                outline_node_id = uuid.UUID(outline_node_id)
+            except ValueError:
+                logger.warning("outline_node_id 不是合法 UUID: %r,忽略", outline_node_id)
+                outline_node_id = None
 
         # 续写模式:取章节 baseline 一次性快照,后续所有写库操作基于此 baseline + 累计
         existing_baseline = ""
@@ -222,6 +230,7 @@ async def _handle_start(
                     mode=mode,
                     continue_from_chars=continue_from_chars,
                     target_word_count=target_word_count,
+                    outline_node_id=outline_node_id,
                 )
                 req = LLMRequest(
                     messages=messages,

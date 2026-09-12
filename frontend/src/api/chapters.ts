@@ -95,4 +95,22 @@ export const chaptersApi = {
 
   generate: (chapterId: string, payload?: GenerateChapterRequest) =>
     http.post<GenerateChapterResponse>(`/chapters/${chapterId}/generate`, payload ?? {}),
+
+  listVersions: (chapterId: string) =>
+    http.get<{ total: number; items: ChapterVersion[] }>(`/chapters/${chapterId}/versions`),
 };
+
+// ==================== Chapter Version ====================
+
+export interface ChapterVersion {
+  id: string;
+  chapter_id: string;
+  version_no: number;
+  plain_content: string;
+  generated_by: string; // 'user' | 'ai' | 'ai_revised'
+  prompt_used: string;
+  model_used: string;
+  token_usage: Record<string, number>;
+  note: string;
+  created_at: string;
+}

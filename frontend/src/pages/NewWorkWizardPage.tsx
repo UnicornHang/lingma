@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { App, Button, Input, Space } from 'antd';
+import { useMutation } from '@tanstack/react-query';
+import { App, Button, Input, Space, Spin, InputNumber, Checkbox, Empty } from 'antd';
 import {
   X,
   BookOpen,
@@ -23,12 +24,13 @@ import {
   Info,
 } from 'lucide-react';
 
-import { worksApi, type Genre } from '@/api/works';
+import { worksApi, outlineApi, type Genre, type PlotVolume } from '@/api';
 
 const STEPS = [
   { key: 'basics', label: '基础信息' },
   { key: 'genre',  label: '体裁与受众' },
   { key: 'world',  label: '世界观种子' },
+  { key: 'outline', label: 'AI 推荐大纲' },
   { key: 'review', label: '确认创建' },
 ];
 
@@ -48,7 +50,7 @@ const GENRES = [
   { key: 'fantasy',    label: '玄幻 / 修仙', desc: '修炼体系 + 异世界',  Icon: BookOpen,       checked: true },
   { key: 'urban',      label: '都市 / 现实', desc: '现代背景 + 情感',    Icon: Building2,      checked: false },
   { key: 'sci_fi',     label: '科幻 / 末世', desc: '技术设定 + 推演',    Icon: Rocket,         checked: true },
-  { key: 'historical', label: '历史 / 架空', desc: '朝代 / 异世界历史',  Icon: Building,       checked: false },
+  { key: 'historical', label: '历史 / 架空', desc: '朝代 / 异世界历史',  Icon: Building,      checked: false },
   { key: 'mystery',    label: '悬疑 / 推理', desc: '案件 + 反转',         Icon: Brain,          checked: false },
   { key: 'romance',    label: '言情 / 甜宠', desc: '情感主线',            Icon: Heart,          checked: false },
   { key: 'wuxia',      label: '武侠 / 仙侠', desc: '江湖 / 门派',         Icon: Sword,          checked: false },
@@ -64,7 +66,6 @@ function parseWordCount(input: string, fallback = 1_000_000): number {
   if (!m) return fallback;
   const num = parseFloat(m[1]);
   if (!Number.isFinite(num) || num <= 0) return fallback;
-  // 包含"万"则乘 10000
   if (/万/.test(input)) return Math.round(num * 10_000);
   return Math.round(num);
 }
@@ -73,7 +74,7 @@ export default function NewWorkWizardPage() {
   const navigate = useNavigate();
   const { message } = App.useApp();
 
-  const [step, setStep] = useState(1); // 0-based: 0,1,2,3
+  const [step, setStep] = useState(0); // 0-based: 0..4
   const [audience, setAudience] = useState<'male' | 'female' | 'all'>('male');
   const [pace, setPace] = useState<'slow' | 'balanced' | 'fast'>('balanced');
   const [genre, setGenre] = useState<Set<string>>(
@@ -90,6 +91,13 @@ export default function NewWorkWizardPage() {
   // Step 2 字段
   const [chapterWords, setChapterWords] = useState('3,500');
   const [targetTotal, setTargetTotal] = useState('100 万字');
+
+  // Step 4 (AI 大纲) 状态
+  const [aiVolumes, setAiVolumes] = useState<PlotVolume[]>([]);
+  const [aiChecked, setAiChecked] = useState<Set<number>>(new Set()); // vol_no 集合
+  const [aiTotalVolumes, setAiTotalVolumes] = useState(3);
+  const [aiTargetChapters, setAiTargetChapters] = useState<number | null>(null);
+  const [aiHint, setAiHint] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -122,7 +130,55 @@ export default function NewWorkWizardPage() {
 
   const targetWordCount = useMemo(() => parseWordCount(targetTotal, 1_000_000), [targetTotal]);
 
-  /** 真正调用后端 API 创建作品 */
+  // AI 大纲预览
+  const aiPreviewMutation = useMutation({
+    mutationFn: () =>
+      outlineApi.aiPreview({
+        work_preview: {
+          title: title.trim(),
+          genre: primaryGenre,
+          logline: logline.trim(),
+          style_keywords: [...keywords],
+          target_audience: audienceArr,
+          target_word_count: targetWordCount,
+        },
+        total_volumes: aiTotalVolumes,
+        target_chapter_count: aiTargetChapters,
+        extra_hint: aiHint.trim() || undefined,
+      }),
+    onSuccess: (resp) => {
+      if (!resp.volumes.length) {
+        message.warning('AI 未能生成有效大纲（输出格式异常），请重试');
+        return;
+      }
+      setAiVolumes(resp.volumes);
+      setAiChecked(new Set(resp.volumes.map((v) => v.vol_no)));
+      message.success(`已生成 ${resp.volumes.length} 卷大纲`);
+    },
+    onError: (err: unknown) => {
+      message.error(err instanceof Error ? err.message : 'AI 推荐失败');
+    },
+  });
+
+  const toggleAiVolume = (volNo: number) => {
+    setAiChecked((prev) => {
+      const next = new Set(prev);
+      next.has(volNo) ? next.delete(volNo) : next.add(volNo);
+      return next;
+    });
+  };
+
+  const selectedVolumes = useMemo(
+    () => aiVolumes.filter((v) => aiChecked.has(v.vol_no)),
+    [aiVolumes, aiChecked],
+  );
+
+  const aiOutlineCount = useMemo(
+    () => selectedVolumes.reduce((sum, v) => sum + v.chapters.length, 0),
+    [selectedVolumes],
+  );
+
+  /** 真正调用后端 API 创建作品 + 写入大纲 */
   const handleCreate = async () => {
     if (!title.trim()) {
       message.warning('请填写作品标题');
@@ -139,7 +195,18 @@ export default function NewWorkWizardPage() {
         style_keywords: [...keywords],
         target_audience: audienceArr,
       });
-      message.success(`作品《${created.title}》创建成功`);
+      // 若用户在第 4 步勾选了 AI 大纲,落库
+      if (selectedVolumes.length > 0) {
+        try {
+          await outlineApi.bulkCreate(created.id, { volumes: selectedVolumes });
+          message.success(`作品 + ${selectedVolumes.length} 卷大纲已创建`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : '大纲写入失败';
+          message.warning(`作品已创建,但大纲写入失败: ${msg}`);
+        }
+      } else {
+        message.success(`作品《${created.title}》创建成功`);
+      }
       navigate(`/works/${created.id}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '创建失败';
@@ -148,6 +215,9 @@ export default function NewWorkWizardPage() {
       setSubmitting(false);
     }
   };
+
+  const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  const prev = () => setStep((s) => Math.max(0, s - 1));
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-auto p-6">
@@ -174,7 +244,7 @@ export default function NewWorkWizardPage() {
         </div>
 
         {/* Stepper */}
-        <div className="flex items-center gap-3 px-8 py-3 bg-surface-container-low border-b border-outline-variant/30">
+        <div className="flex items-center gap-3 px-8 py-3 bg-surface-container-low border-b border-outline-variant/30 overflow-x-auto">
           {STEPS.map((s, i) => {
             const done = i < step;
             const active = i === step;
@@ -193,7 +263,7 @@ export default function NewWorkWizardPage() {
                     {done ? <CheckCircle2 size={16} /> : i + 1}
                   </span>
                   <span
-                    className={`text-label-md ${
+                    className={`text-label-md whitespace-nowrap ${
                       active ? 'text-on-surface font-semibold' : 'text-on-surface-variant'
                     }`}
                   >
@@ -366,6 +436,22 @@ export default function NewWorkWizardPage() {
             />
           )}
           {step === 3 && (
+            <StepAiOutline
+              totalVolumes={aiTotalVolumes}
+              onTotalVolumes={setAiTotalVolumes}
+              targetChapters={aiTargetChapters}
+              onTargetChapters={setAiTargetChapters}
+              hint={aiHint}
+              onHint={setAiHint}
+              volumes={aiVolumes}
+              checked={aiChecked}
+              onToggle={toggleAiVolume}
+              loading={aiPreviewMutation.isPending}
+              onGenerate={() => aiPreviewMutation.mutate()}
+              error={aiPreviewMutation.error ? (aiPreviewMutation.error as Error).message : null}
+            />
+          )}
+          {step === 4 && (
             <StepReview
               title={title}
               logline={logline}
@@ -377,6 +463,8 @@ export default function NewWorkWizardPage() {
               chapterWords={chapterWords}
               targetTotal={targetTotal}
               keywords={[...keywords]}
+              aiOutlineCount={aiOutlineCount}
+              aiVolumeCount={selectedVolumes.length}
             />
           )}
         </div>
@@ -389,8 +477,8 @@ export default function NewWorkWizardPage() {
               {step < 2
                 ? '下一步可让 Writer Agent 自动生成作品世界观草案'
                 : step === 3
-                  ? '点击「创建」后将立即初始化数据库与向量库'
-                  : '确认信息后即可进入编辑器'}
+                  ? 'AI 推荐的大纲可勾选后,在创建作品时一并写入'
+                  : '点击「创建」后将立即初始化数据库与向量库'}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -398,7 +486,7 @@ export default function NewWorkWizardPage() {
               type="default"
               icon={<ArrowLeft size={16} />}
               disabled={step === 0 || submitting}
-              onClick={() => setStep(Math.max(0, step - 1))}
+              onClick={prev}
             >
               上一步
             </Button>
@@ -407,7 +495,7 @@ export default function NewWorkWizardPage() {
                 type="primary"
                 icon={<ArrowRight size={18} />}
                 iconPosition="end"
-                onClick={() => setStep(step + 1)}
+                onClick={next}
                 disabled={submitting}
               >
                 下一步
@@ -530,6 +618,132 @@ function StepWorld({ protagonist: _protagonist, onProtagonist: _onProtagonist }:
   );
 }
 
+interface StepAiOutlineProps {
+  totalVolumes: number;
+  onTotalVolumes: (v: number) => void;
+  targetChapters: number | null;
+  onTargetChapters: (v: number | null) => void;
+  hint: string;
+  onHint: (v: string) => void;
+  volumes: PlotVolume[];
+  checked: Set<number>;
+  onToggle: (volNo: number) => void;
+  loading: boolean;
+  onGenerate: () => void;
+  error: string | null;
+}
+
+function StepAiOutline({
+  totalVolumes, onTotalVolumes,
+  targetChapters, onTargetChapters,
+  hint, onHint,
+  volumes, checked, onToggle,
+  loading, onGenerate, error,
+}: StepAiOutlineProps) {
+  return (
+    <div className="flex flex-col gap-6 max-w-4xl">
+      <div>
+        <h3 className="text-headline-sm font-semibold text-on-surface flex items-center gap-2">
+          <Sparkles size={20} className="text-primary" />
+          AI 推荐大纲 <span className="text-body-sm text-on-surface-variant font-normal">（可选,创建作品时一并写入）</span>
+        </h3>
+        <p className="text-body-sm text-on-surface-variant mt-1">
+          根据已填写的体裁 / 简介 / 关键词,让 AI 设计 N 卷大纲;勾选需要的卷,创建时批量写入数据库。
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 surface-card p-4">
+        <div className="flex flex-col gap-1">
+          <label className="text-label-md text-on-surface">总卷数</label>
+          <InputNumber
+            min={1}
+            max={10}
+            value={totalVolumes}
+            onChange={(v) => onTotalVolumes(typeof v === 'number' ? v : 3)}
+            className="!w-full"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-label-md text-on-surface">目标总章节数 <span className="text-body-xs text-on-surface-variant">（留空自动推算）</span></label>
+          <InputNumber
+            min={1}
+            max={200}
+            value={targetChapters ?? undefined}
+            onChange={(v) => onTargetChapters(typeof v === 'number' ? v : null)}
+            placeholder="自动按字数推算"
+            className="!w-full"
+          />
+        </div>
+        <div className="col-span-2 flex flex-col gap-1">
+          <label className="text-label-md text-on-surface">附加要求（可选）</label>
+          <Input.TextArea
+            rows={2}
+            maxLength={500}
+            showCount
+            value={hint}
+            onChange={(e) => onHint(e.target.value)}
+            placeholder="例:前 3 卷聚焦主角成长,第 4 卷反派登场"
+          />
+        </div>
+        <div className="col-span-2 flex justify-end">
+          <Button
+            type="primary"
+            icon={<Sparkles size={16} />}
+            loading={loading}
+            onClick={onGenerate}
+          >
+            {volumes.length ? '重新生成' : '生成 AI 大纲'}
+          </Button>
+        </div>
+        {error && <div className="col-span-2 text-body-sm text-error">生成失败:{error}</div>}
+      </div>
+
+      <Spin spinning={loading} tip="AI 正在设计大纲...">
+        {volumes.length === 0 ? (
+          <Empty description={loading ? '' : '尚未生成;点击「生成 AI 大纲」开始'} />
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="text-body-sm text-on-surface-variant">
+              已生成 {volumes.length} 卷 / {volumes.reduce((s, v) => s + v.chapters.length, 0)} 章,勾选要采纳的卷。
+            </div>
+            {volumes.map((v) => (
+              <div
+                key={v.vol_no}
+                className={`surface-card p-4 flex flex-col gap-2 ${checked.has(v.vol_no) ? 'ring-2 ring-primary' : ''}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={checked.has(v.vol_no)}
+                    onChange={() => onToggle(v.vol_no)}
+                  >
+                    <span className="font-semibold text-on-surface">{v.vol_title}</span>
+                    <span className="ml-2 text-body-xs text-on-surface-variant">第 {v.vol_no} 卷 · {v.chapters.length} 章</span>
+                  </Checkbox>
+                </div>
+                {v.summary && <div className="text-body-sm text-on-surface-variant">{v.summary}</div>}
+                <div className="flex flex-col gap-1 pl-7">
+                  {v.chapters.slice(0, 5).map((c, i) => (
+                    <div key={i} className="text-body-sm text-on-surface-variant flex items-start gap-2">
+                      <span className="text-outline">·</span>
+                      <div className="flex-1">
+                        <span className="font-code-sm text-on-surface">{c.title}</span>
+                        {c.summary && <span className="ml-2">{c.summary}</span>}
+                      </div>
+                    </div>
+                  ))}
+                  {v.chapters.length > 5 && (
+                    <div className="text-body-xs text-on-surface-variant">… 等共 {v.chapters.length} 章</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Spin>
+    </div>
+  );
+}
+
 interface StepReviewProps {
   title: string;
   logline: string;
@@ -541,11 +755,14 @@ interface StepReviewProps {
   chapterWords: string;
   targetTotal: string;
   keywords: string[];
+  aiVolumeCount: number;
+  aiOutlineCount: number;
 }
 
 function StepReview({
   title, logline, penName, volume1Name,
   genre, audience, pace, chapterWords, targetTotal, keywords,
+  aiVolumeCount, aiOutlineCount,
 }: StepReviewProps) {
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
@@ -563,6 +780,11 @@ function StepReview({
         <Row label="主笔名" value={penName} />
         <Row label="第一卷名" value={volume1Name} />
         <Row label="一句话简介" value={logline || '（未填）'} />
+        <Row
+          label="AI 大纲"
+          value={aiVolumeCount > 0 ? `${aiVolumeCount} 卷 / ${aiOutlineCount} 章` : '（跳过,稍后手动创建）'}
+          highlight={aiVolumeCount > 0}
+        />
       </div>
       <div className="px-3 py-2 rounded-lg bg-tertiary-container/20 text-body-sm text-on-surface-variant">
         <Info size={18} className="align-middle text-tertiary inline" />{' '}
@@ -572,11 +794,15 @@ function StepReview({
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="flex items-center gap-4">
       <span className="text-label-md text-on-surface-variant w-24">{label}</span>
-      <span className="font-code-md text-on-surface break-all">{value}</span>
+      <span
+        className={`font-code-md break-all ${highlight ? 'text-primary font-semibold' : 'text-on-surface'}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }

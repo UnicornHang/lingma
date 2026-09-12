@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Button } from 'antd';
+import { useQuery } from '@tanstack/react-query';
+import { App, Button, Select, Modal, Spin, Space } from 'antd';
 import {
   ChevronDown,
   ChevronRight,
@@ -14,27 +15,19 @@ import {
   Save,
   Loader2,
   X,
+  History,
+  GitBranch,
 } from 'lucide-react';
 
-import { chaptersApi, type Chapter, type TipTapDoc } from '@/api/chapters';
+import {
+  chaptersApi,
+  type Chapter,
+  type ChapterVersion,
+  type TipTapDoc,
+} from '@/api/chapters';
+import { outlineApi, type OutlineTreeNode } from '@/api/outline';
 import { useGenerationStream } from '@/hooks/useGenerationStream';
 import { RichEditor, type RichEditorHandle } from '@/components/RichEditor';
-
-// 示例大纲树 —— 后端接入后可换成真实 outline tree API
-const OUTLINE = [
-  {
-    volume: '第一卷·少年游',
-    chapters: 42,
-    expanded: true,
-    items: [
-      { id: 'c1',  title: '第 1 章 洞天风云',  wordCount: '2.4k', active: false },
-      { id: 'c11', title: '第 11 章 意外来客', wordCount: '3.2k', active: true },
-      { id: 'c12', title: '第 12 章 山雨欲来', wordCount: '2.8k', active: false },
-    ],
-  },
-  { volume: '第二卷·江湖路', chapters: 38, expanded: false, items: [] },
-  { volume: '第三卷·风波起', chapters: 36, expanded: false, items: [] },
-];
 
 const TABS = ['分析', '批注', '角色', '一致性', '伏笔'];
 
@@ -52,6 +45,25 @@ function plainFromDoc(doc: TipTapDoc | null | undefined): string {
   return doc.content.map(walk).join('').trim();
 }
 
+/** 扁平化大纲树为章节节点（含父卷标题） */
+function flattenChapters(
+  nodes: OutlineTreeNode[],
+  volumeTitle?: string,
+): Array<OutlineTreeNode & { volumeTitle: string }> {
+  const out: Array<OutlineTreeNode & { volumeTitle: string }> = [];
+  for (const n of nodes) {
+    if (n.type === 'volume') {
+      for (const ch of flattenChapters(n.children ?? [], n.title)) out.push(ch);
+    } else if (n.type === 'chapter') {
+      out.push({ ...n, volumeTitle: volumeTitle ?? '' });
+    } else if (n.type === 'beat') {
+      // beat 也展示
+      out.push({ ...n, volumeTitle: volumeTitle ?? '' });
+    }
+  }
+  return out;
+}
+
 export default function ChapterEditorPage() {
   const { chapterId } = useParams<{ chapterId?: string }>();
   const navigate = useNavigate();
@@ -66,6 +78,11 @@ export default function ChapterEditorPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  // [P3] 大纲节点状态：从当前章节读,或从大纲树点击切换
+  const [outlineNodeId, setOutlineNodeId] = useState<string | null>(null);
+  // [P4] 版本历史 UI 状态
+  const [versionModalOpen, setVersionModalOpen] = useState(false);
+  const [activeVersion, setActiveVersion] = useState<ChapterVersion | null>(null);
 
   const saveTimerRef = useRef<number | null>(null);
   const editorRef = useRef<RichEditorHandle>(null);
@@ -83,6 +100,8 @@ export default function ChapterEditorPage() {
         const initial = (c.content ?? { type: 'doc', content: [] }) as TipTapDoc;
         setContent(initial);
         setPlainText(c.plain_content || plainFromDoc(initial));
+        // 同步 outline_node_id(若有)
+        setOutlineNodeId(c.outline_node_id ?? null);
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : '加载章节失败';
@@ -158,6 +177,7 @@ export default function ChapterEditorPage() {
         mode: 'continue',
         continue_from_chars: 1500,
         target_word_count: 800,
+        outline_node_id: outlineNodeId ?? undefined,
       });
       setTaskId(resp.task_id);
     } catch (err: unknown) {
@@ -165,7 +185,7 @@ export default function ChapterEditorPage() {
       message.error(msg);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapterId, generation.status, dirty, persist]);
+  }, [chapterId, generation.status, dirty, persist, outlineNodeId]);
 
   // 注册「待发 start 意图」。useGenerationStream 内部 effect 会在 WS 进入
   // OPEN 时自动发送（StrictMode-safe：即使 WS 被 cleanup，新 WS 进入 OPEN 也会再发一次）
@@ -200,6 +220,8 @@ export default function ChapterEditorPage() {
     }
     setDirty(true);
     setTaskId(null);
+    // 刷新版本列表
+    if (chapterId) versionsQuery.refetch();
     message.success(`Writer Agent 已续写 ${cleaned.length} 字`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generation.status, generation.content]);
@@ -224,6 +246,92 @@ export default function ChapterEditorPage() {
   // 字数显示
   const wordCount = useMemo(() => plainText.length, [plainText]);
   const isStreaming = generation.status === 'streaming' || generation.status === 'connecting' || generation.status === 'ready';
+
+  // ==================== [P3] 大纲树数据 ====================
+  const outlineQuery = useQuery({
+    queryKey: ['outline-tree', chapter?.work_id],
+    queryFn: () => outlineApi.tree(chapter!.work_id),
+    enabled: !!chapter?.work_id,
+  });
+  const flatChapters = useMemo(
+    () => flattenChapters(outlineQuery.data?.nodes ?? []),
+    [outlineQuery.data],
+  );
+  const [expandedVolumes, setExpandedVolumes] = useState<Set<string>>(new Set());
+
+  // 默认展开首个卷
+  useEffect(() => {
+    if (outlineQuery.data?.nodes?.length && expandedVolumes.size === 0) {
+      const first = outlineQuery.data.nodes[0];
+      setExpandedVolumes(new Set([first.id]));
+    }
+  }, [outlineQuery.data, expandedVolumes.size]);
+
+  const toggleVolume = (id: string) => {
+    setExpandedVolumes((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleChapterClick = (chapId: string, outlineId: string) => {
+    // 切换到 outline_id 对应的章节(通过 chaptersApi 找或创建)
+    // 简化版:直接跳到 /editor/{chapId} 路径,但 chapId 是 outline_node_id 而非 chapter.id
+    // 实际生产中需要后端支持 /editor/by-outline/{outline_node_id}
+    setOutlineNodeId(outlineId);
+    void chapId;
+  };
+
+  // ==================== [P4] 版本历史 ====================
+  const versionsQuery = useQuery({
+    queryKey: ['chapter-versions', chapterId],
+    queryFn: () => chaptersApi.listVersions(chapterId!),
+    enabled: !!chapterId,
+    refetchOnWindowFocus: false,
+  });
+  const versions = versionsQuery.data?.items ?? [];
+
+  // "当前版本" = 当前 chapter 的 plain_content,版本号 = chapter.version
+  // 历史版本从 versionsQuery 拿
+  type VersionRow =
+    | { kind: 'current'; versionNo: number; length: number; generatedBy: string; note: string; createdAt: string }
+    | { kind: 'history'; versionNo: number; length: number; generatedBy: string; note: string; createdAt: string; data: ChapterVersion };
+  const versionRows: VersionRow[] = useMemo(() => {
+    const rows: VersionRow[] = [];
+    if (chapter) {
+      rows.push({
+        kind: 'current',
+        versionNo: chapter.version,
+        length: chapter.word_count,
+        generatedBy: 'user',
+        note: '当前版本',
+        createdAt: chapter.updated_at,
+      });
+    }
+    for (const v of versions) {
+      rows.push({
+        kind: 'history',
+        versionNo: v.version_no,
+        length: v.plain_content?.length ?? 0,
+        generatedBy: v.generated_by,
+        note: v.note || `${v.generated_by}`,
+        createdAt: v.created_at,
+        data: v,
+      });
+    }
+    rows.sort((a, b) => b.versionNo - a.versionNo);
+    return rows;
+  }, [chapter, versions]);
+
+  const openVersion = (row: VersionRow) => {
+    if (row.kind === 'current') {
+      message.info('当前版本即编辑区内容,无需预览');
+      return;
+    }
+    setActiveVersion(row.data);
+    setVersionModalOpen(true);
+  };
 
   // ---------- 无 chapterId：占位提示 ----------
   if (!chapterId) {
@@ -254,7 +362,7 @@ export default function ChapterEditorPage() {
       <aside className="w-[300px] flex-shrink-0 h-full bg-surface-container-lowest border-r border-outline-variant/30 overflow-y-auto flex flex-col">
         <div className="p-6 border-b border-outline-variant/30">
           <h3 className="text-headline-sm font-semibold text-on-surface flex items-center justify-between">
-            <span>{chapter ? chapter.title : '加载中…'}</span>
+            <span className="truncate">{chapter ? chapter.title : '加载中…'}</span>
             <Button type="text" shape="circle" icon={<Plus size={18} />} aria-label="新建章节" />
           </h3>
           <p className="text-body-sm text-on-surface-variant mt-1">
@@ -262,46 +370,69 @@ export default function ChapterEditorPage() {
           </p>
         </div>
         <div className="p-4 flex flex-col gap-1">
-          {OUTLINE.map((vol) => (
-            <div key={vol.volume} className="flex flex-col gap-0.5">
-              <Button
-                type="text"
-                block
-                className="!justify-start !text-left"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px' }}
-              >
-                {vol.expanded ? (
-                  <ChevronDown size={16} className="text-outline" />
-                ) : (
-                  <ChevronRight size={16} className="text-outline" />
-                )}
-                <span className="text-label-md font-semibold text-on-surface flex-1 ml-1 text-left">
-                  {vol.volume}
-                </span>
-                <span className="font-code-sm text-outline">{vol.chapters} 章</span>
-              </Button>
-              {vol.expanded && (
-                <div className="ml-4 flex flex-col gap-0.5">
-                  {vol.items.map((c) => (
-                    <a
-                      key={c.id}
-                      href={`/chapters/${c.id}`}
-                      onClick={(e) => { e.preventDefault(); navigate(`/chapters/${c.id}`); }}
-                      className={`flex items-center gap-2 px-2 py-1.5 rounded text-body-sm ${
-                        c.active
-                          ? 'bg-primary-container text-on-primary-container font-semibold'
-                          : 'text-on-surface-variant hover:bg-surface-container'
-                      }`}
-                    >
-                      <FileText size={14} />
-                      <span className="flex-1">{c.title}</span>
-                      <span className="font-code-sm">{c.wordCount}</span>
-                    </a>
-                  ))}
-                </div>
-              )}
+          {outlineQuery.isLoading && (
+            <div className="flex items-center justify-center py-4">
+              <Spin size="small" />
             </div>
-          ))}
+          )}
+          {outlineQuery.error && (
+            <div className="text-body-xs text-error">大纲加载失败</div>
+          )}
+          {(outlineQuery.data?.nodes ?? []).map((vol) => {
+            const expanded = expandedVolumes.has(vol.id);
+            const childChapters = (vol.children ?? []).filter((c) => c.type === 'chapter' || c.type === 'beat');
+            return (
+              <div key={vol.id} className="flex flex-col gap-0.5">
+                <Button
+                  type="text"
+                  block
+                  onClick={() => toggleVolume(vol.id)}
+                  className="!justify-start !text-left"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px' }}
+                >
+                  {expanded ? <ChevronDown size={16} className="text-outline" /> : <ChevronRight size={16} className="text-outline" />}
+                  <span className="text-label-md font-semibold text-on-surface flex-1 ml-1 text-left">
+                    {vol.title}
+                  </span>
+                  <span className="font-code-sm text-outline">{childChapters.length} 章</span>
+                </Button>
+                {expanded && (
+                  <div className="ml-4 flex flex-col gap-0.5">
+                    {childChapters.map((c) => {
+                      const isActive = outlineNodeId === c.id;
+                      return (
+                        <a
+                          key={c.id}
+                          href={`#${c.id}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleChapterClick(c.id, c.id);
+                          }}
+                          className={`flex items-center gap-2 px-2 py-1.5 rounded text-body-sm ${
+                            isActive
+                              ? 'bg-primary-container text-on-primary-container font-semibold'
+                              : 'text-on-surface-variant hover:bg-surface-container'
+                          }`}
+                        >
+                          <FileText size={14} />
+                          <span className="flex-1 truncate">{c.title}</span>
+                          <span className="font-code-sm">{c.target_word_count}</span>
+                        </a>
+                      );
+                    })}
+                    {childChapters.length === 0 && (
+                      <div className="px-2 py-1 text-body-xs text-outline italic">暂无章节</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {!outlineQuery.isLoading && (outlineQuery.data?.nodes ?? []).length === 0 && (
+            <div className="px-2 py-3 text-body-sm text-on-surface-variant italic">
+              还没有大纲,新建作品后可使用「AI 推荐大纲」一键生成。
+            </div>
+          )}
         </div>
       </aside>
 
@@ -310,9 +441,9 @@ export default function ChapterEditorPage() {
         <div className="max-w-[880px] mx-auto px-8 py-8">
           {/* Breadcrumb + title */}
           <div className="flex items-center gap-2 text-on-surface-variant text-label-md mb-2">
-            <span>第一卷·少年游</span>
+            <span>{flatChapters.find((c) => c.id === outlineNodeId)?.volumeTitle || '—'}</span>
             <span className="text-outline">/</span>
-            <span>第 11 章</span>
+            <span>{chapter?.title ?? '加载中…'}</span>
           </div>
           <h1 className="text-display font-bold text-on-surface">
             {chapter?.title ?? '加载中…'}
@@ -328,7 +459,7 @@ export default function ChapterEditorPage() {
           </div>
 
           {/* Toolbar (TipTap's own toolbar is inside RichEditor; here we keep meta + AI button) */}
-          <div className="flex items-center gap-1 p-1 mt-4 bg-surface-container-lowest rounded-lg border border-outline-variant/40 shadow-L1-card">
+          <div className="flex items-center gap-2 p-1 mt-4 bg-surface-container-lowest rounded-lg border border-outline-variant/40 shadow-L1-card flex-wrap">
             <Button
               type="primary"
               ghost
@@ -336,11 +467,36 @@ export default function ChapterEditorPage() {
               icon={<Bot size={16} />}
               onClick={handleAiContinue}
               disabled={isStreaming}
-              title="AI 续写 800 字"
+              title={outlineNodeId ? `AI 续写 800 字(基于大纲节点 ${outlineNodeId.slice(0, 8)})` : 'AI 续写 800 字'}
             >
               续写
             </Button>
             <span className="px-2 py-1 text-body-sm text-on-surface-variant">提示词</span>
+
+            {/* [P4] 版本下拉 */}
+            <span className="px-2 py-1 text-body-sm text-on-surface-variant flex items-center gap-1">
+              <History size={14} className="text-outline" />
+              版本
+            </span>
+            <Select
+              size="small"
+              style={{ minWidth: 200 }}
+              value={`v${chapter?.version ?? 1} (当前)`}
+              onChange={(value) => {
+                const row = versionRows.find((r) => `${r.kind}:${r.versionNo}` === value);
+                if (row) openVersion(row);
+              }}
+              options={versionRows.map((r) => ({
+                value: `${r.kind}:${r.versionNo}`,
+                label:
+                  r.kind === 'current'
+                    ? `v${r.versionNo} · 当前版本 · ${r.length} 字`
+                    : `v${r.versionNo} · ${r.generatedBy} · ${r.note || `${r.length} 字`}`,
+              }))}
+              placeholder={versionsQuery.isLoading ? '加载版本中…' : '无历史版本'}
+              notFoundContent={versionsQuery.isLoading ? <Spin size="small" /> : '无历史版本'}
+            />
+
             {isStreaming && (
               <Button
                 type="text"
@@ -458,6 +614,36 @@ export default function ChapterEditorPage() {
 
         {/* Cards */}
         <div className="p-4 flex flex-col gap-4">
+          {/* [P3] 当前大纲节点信息 */}
+          <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant/40 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="chip-primary">本章大纲</span>
+              <span className="font-code-sm text-outline">
+                {outlineNodeId ? `node ${outlineNodeId.slice(0, 8)}` : '未关联大纲'}
+              </span>
+            </div>
+            <div className="text-body-sm text-on-surface flex items-start gap-2">
+              <GitBranch size={14} className="mt-0.5 text-primary" />
+              <div className="flex-1">
+                {(() => {
+                  const node = flatChapters.find((c) => c.id === outlineNodeId);
+                  if (!node) return <span className="text-on-surface-variant italic">点击左侧大纲树节点以关联</span>;
+                  return (
+                    <>
+                      <div className="font-semibold">{node.title}</div>
+                      {node.summary && <div className="text-on-surface-variant mt-1">{node.summary}</div>}
+                      {node.characters_involved?.length > 0 && (
+                        <div className="text-body-xs text-on-surface-variant mt-1">
+                          角色:{node.characters_involved.join('、')}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+
           {/* Beat */}
           <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant/40 flex flex-col gap-2">
             <div className="flex items-center justify-between">
@@ -567,6 +753,58 @@ export default function ChapterEditorPage() {
           </div>
         </div>
       </aside>
+
+      {/* [P4] 历史版本预览 Modal */}
+      <Modal
+        title={
+          <Space>
+            <History size={18} className="text-primary" />
+            {activeVersion ? `查看 v${activeVersion.version_no} 历史版本（只读）` : '版本预览'}
+          </Space>
+        }
+        open={versionModalOpen}
+        onCancel={() => setVersionModalOpen(false)}
+        footer={null}
+        width={820}
+        destroyOnClose
+      >
+        {activeVersion && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+              <span className="chip-primary">v{activeVersion.version_no}</span>
+              <span>{activeVersion.generated_by}</span>
+              <span>·</span>
+              <span>{activeVersion.model_used || 'mock'}</span>
+              <span>·</span>
+              <span>{new Date(activeVersion.created_at).toLocaleString('zh-CN')}</span>
+              {activeVersion.note && (
+                <>
+                  <span>·</span>
+                  <span className="text-primary">{activeVersion.note}</span>
+                </>
+              )}
+            </div>
+            {activeVersion.prompt_used && (
+              <details className="surface-card p-3">
+                <summary className="cursor-pointer text-body-sm text-on-surface-variant">
+                  查看 Prompt({activeVersion.prompt_used.length} 字)
+                </summary>
+                <pre className="whitespace-pre-wrap text-body-xs text-on-surface mt-2 max-h-48 overflow-y-auto">
+                  {activeVersion.prompt_used.slice(0, 3000)}
+                  {activeVersion.prompt_used.length > 3000 ? '\n...(已截断)' : ''}
+                </pre>
+              </details>
+            )}
+            <pre className="whitespace-pre-wrap text-body-md text-on-surface max-h-[50vh] overflow-y-auto surface-card p-4">
+              {activeVersion.plain_content || '（无内容）'}
+            </pre>
+            <div className="flex justify-end gap-2 pt-2 border-t border-outline-variant/30">
+              <Button onClick={() => setVersionModalOpen(false)}>关闭</Button>
+              <Button disabled title="即将在 v2 版本支持">恢复到此版本(即将支持)</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

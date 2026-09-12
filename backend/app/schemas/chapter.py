@@ -89,3 +89,30 @@ class GenerationStreamEvent(BaseModel):
     progress: float | None = None
     error: str | None = None
     metadata: dict[str, Any] | None = None
+
+
+# ==================== Chapter Version（版本历史）====================
+
+
+class ChapterVersionRead(BaseModel):
+    """章节版本（历史快照，只读）"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    chapter_id: UUID
+    version_no: int
+    plain_content: str = ""
+    generated_by: str = ""
+    prompt_used: str = ""
+    model_used: str = ""
+    token_usage: dict[str, Any] = Field(default_factory=dict)
+    note: str = ""
+    created_at: datetime
+
+
+class ChapterVersionListResponse(BaseModel):
+    """章节版本列表"""
+
+    total: int
+    items: list[ChapterVersionRead]

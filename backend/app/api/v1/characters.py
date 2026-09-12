@@ -4,11 +4,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.character_agent import CharacterAgent
 from app.deps import get_db
 from app.schemas.character import (
     CharacterCreate,
     CharacterListResponse,
     CharacterRead,
+    CharacterSuggestRequest,
+    CharacterSuggestResponse,
     CharacterUpdate,
 )
 from app.services import character_service
@@ -88,3 +91,27 @@ async def delete_character_endpoint(
 ) -> None:
     await character_service.delete_character(db, character_id)
     await db.commit()
+
+
+@router.post(
+    "/characters/ai-suggest",
+    response_model=CharacterSuggestResponse,
+    summary="AI 推荐角色（不强写入 DB；前端按需采纳）",
+)
+async def ai_suggest_characters(
+    payload: CharacterSuggestRequest,
+    db: AsyncSession = Depends(get_db),
+) -> CharacterSuggestResponse:
+    agent = CharacterAgent()
+    cards, model_used, raw = await agent.suggest(
+        db,
+        work_id=payload.work_id,
+        count=payload.count,
+        focus=payload.focus,
+        extra_hint=payload.extra_hint,
+    )
+    return CharacterSuggestResponse(
+        cards=cards,
+        model_used=model_used,
+        raw_content=raw,
+    )

@@ -2,15 +2,19 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_db
+from app.models.chapter import ChapterVersion
 from app.models.task import GenerationTask, TaskStatus, TaskType
 from app.schemas.chapter import (
     ChapterCreate,
     ChapterListResponse,
     ChapterRead,
     ChapterUpdate,
+    ChapterVersionListResponse,
+    ChapterVersionRead,
     GenerateChapterRequest,
 )
 from app.services import chapter_service
@@ -141,3 +145,27 @@ async def generate_chapter_endpoint(
         "status": task.status if isinstance(task.status, str) else task.status.value,
         "chapter_id": str(chapter_id),
     }
+
+
+@router.get(
+    "/{chapter_id}/versions",
+    response_model=ChapterVersionListResponse,
+    summary="章节历史版本列表（按 version_no 倒序）",
+)
+async def list_chapter_versions_endpoint(
+    chapter_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> ChapterVersionListResponse:
+    """只读,只列出历史版本。不暴露切换/回滚写操作（避免误覆盖当前正文）。"""
+    # 校验章节存在
+    await chapter_service.get_chapter(db, chapter_id)
+    r = await db.execute(
+        select(ChapterVersion)
+        .where(ChapterVersion.chapter_id == chapter_id)
+        .order_by(ChapterVersion.version_no.desc())
+    )
+    versions = list(r.scalars().all())
+    return ChapterVersionListResponse(
+        total=len(versions),
+        items=[ChapterVersionRead.model_validate(v) for v in versions],
+    )

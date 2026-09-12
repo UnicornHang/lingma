@@ -1,7 +1,22 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { App, Spin, Empty, Modal, Form, Input, Select, Button } from 'antd';
+import {
+  App,
+  Spin,
+  Empty,
+  Modal,
+  Form,
+  Input,
+  Select,
+  Button,
+  InputNumber,
+  Radio,
+  Tag,
+  Card,
+  Space,
+  Divider,
+} from 'antd';
 import {
   Plus,
   Search,
@@ -11,22 +26,31 @@ import {
   Star,
   Users,
   MoreHorizontal,
+  Sparkles,
+  Check,
+  X,
 } from 'lucide-react';
 
-import { charactersApi, type Character } from '@/api';
-
-const ROLE_LABEL: Record<string, string> = {
-  protagonist: '主角',
-  antagonist: '反派',
-  supporting: '配角',
-  narrator: '叙事者',
-};
+import {
+  charactersApi,
+  type Character,
+  type CharacterCard,
+  type CharacterRole,
+  type CharacterSuggestFocus,
+} from '@/api';
 
 const ROLE_CHIP: Record<string, string> = {
   protagonist: 'chip-primary',
   antagonist: 'chip-error',
   supporting: 'chip-tertiary',
   narrator: 'chip-secondary',
+};
+
+const ROLE_LABEL: Record<CharacterRole, string> = {
+  protagonist: '主角',
+  antagonist: '反派',
+  supporting: '配角',
+  narrator: '叙述者',
 };
 
 export default function CharactersPage() {
@@ -36,7 +60,9 @@ export default function CharactersPage() {
   const [keyword, setKeyword] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [, setEditing] = useState<Character | null>(null);
-  const [form] = Form.useForm();
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiCards, setAiCards] = useState<CharacterCard[]>([]);
+  const [aiForm] = Form.useForm();
 
   const listQuery = useQuery({
     queryKey: ['characters', workId],
@@ -69,6 +95,36 @@ export default function CharactersPage() {
     },
   });
 
+  const aiSuggestMutation = useMutation({
+    mutationFn: (payload: { count: number; focus: CharacterSuggestFocus; extra_hint?: string }) =>
+      charactersApi.aiSuggest(workId!, payload),
+  });
+
+  const aiAcceptMutation = useMutation({
+    mutationFn: (card: CharacterCard) =>
+      charactersApi.create({
+        work_id: workId!,
+        name: card.name,
+        role: card.role,
+        raw_text: card.raw_text,
+        basic_info: card.basic_info as unknown as Record<string, unknown>,
+        personality: card.personality as unknown as Record<string, unknown>,
+        backstory: card.backstory as unknown as Record<string, unknown>,
+        relationships: card.relationships as unknown[],
+        arc: card.arc as unknown as Record<string, unknown>,
+        voice_samples: card.voice_samples,
+      }),
+    onSuccess: (created) => {
+      message.success(`已采纳「${created.name}」`);
+      qc.invalidateQueries({ queryKey: ['characters', workId] });
+    },
+    onError: (err: unknown) => {
+      message.error(err instanceof Error ? err.message : '采纳失败');
+    },
+  });
+
+  const [form] = Form.useForm();
+
   if (!workId) return <Empty description="缺少作品 ID" />;
   if (listQuery.isLoading) {
     return <div className="flex items-center justify-center h-full"><Spin size="large" /></div>;
@@ -96,6 +152,37 @@ export default function CharactersPage() {
     } catch {/* noop */}
   };
 
+  const openAi = () => {
+    aiForm.resetFields();
+    aiForm.setFieldsValue({ count: 3, focus: 'supporting', extra_hint: '' });
+    setAiCards([]);
+    setAiOpen(true);
+  };
+
+  const submitAi = async () => {
+    try {
+      const v = await aiForm.validateFields();
+      const resp = await aiSuggestMutation.mutateAsync(v);
+      if (!resp.cards.length) {
+        message.warning('AI 未能生成有效角色（输出格式异常），请重试');
+        return;
+      }
+      setAiCards(resp.cards);
+      message.success(`已生成 ${resp.cards.length} 张角色建议`);
+    } catch (err) {
+      if (err instanceof Error) message.error(err.message);
+    }
+  };
+
+  const acceptAi = async (card: CharacterCard) => {
+    await aiAcceptMutation.mutateAsync(card);
+    setAiCards((prev) => prev.filter((c) => c.name !== card.name));
+  };
+
+  const rejectAi = (card: CharacterCard) => {
+    setAiCards((prev) => prev.filter((c) => c.name !== card.name));
+  };
+
   return (
     <div className="w-full h-full overflow-y-auto bg-surface-container-low">
       <div className="p-8 flex flex-col gap-6 max-w-6xl mx-auto">
@@ -105,9 +192,14 @@ export default function CharactersPage() {
               返回作品
             </Button>
           </Link>
-          <Button type="primary" icon={<Plus size={16} />} onClick={openCreate}>
-            新增角色
-          </Button>
+          <Space>
+            <Button icon={<Sparkles size={16} />} onClick={openAi}>
+              AI 推荐
+            </Button>
+            <Button type="primary" icon={<Plus size={16} />} onClick={openCreate}>
+              新增角色
+            </Button>
+          </Space>
         </div>
 
         <div className="flex items-center gap-3">
@@ -133,7 +225,7 @@ export default function CharactersPage() {
         ) : (
           <div className="grid grid-cols-3 gap-4">
             {filtered.map((c) => (
-              <CharacterCard
+              <CharacterCardView
                 key={c.id}
                 character={c}
                 onDelete={() => {
@@ -149,6 +241,7 @@ export default function CharactersPage() {
         )}
       </div>
 
+      {/* 新增角色 Modal */}
       <Modal
         title="新增角色"
         open={modalOpen}
@@ -176,11 +269,75 @@ export default function CharactersPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* AI 推荐 Modal */}
+      <Modal
+        title={
+          <Space>
+            <Sparkles size={18} className="text-primary" />
+            AI 角色设计
+          </Space>
+        }
+        open={aiOpen}
+        onCancel={() => setAiOpen(false)}
+        footer={null}
+        width={820}
+        destroyOnClose
+      >
+        {aiCards.length === 0 ? (
+          <Spin spinning={aiSuggestMutation.isPending} tip="AI 正在设计角色...">
+            <Form form={aiForm} layout="vertical" className="!pt-2">
+              <Form.Item label="生成数量" name="count" rules={[{ required: true }]}>
+                <InputNumber min={1} max={10} className="!w-32" />
+              </Form.Item>
+              <Form.Item label="焦点" name="focus" rules={[{ required: true }]}>
+                <Radio.Group
+                  options={[
+                    { value: 'protagonist', label: '主角' },
+                    { value: 'antagonist', label: '反派' },
+                    { value: 'supporting', label: '配角' },
+                    { value: 'all', label: '混合' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item label="附加要求（可选）" name="extra_hint">
+                <Input.TextArea
+                  rows={3}
+                  maxLength={500}
+                  showCount
+                  placeholder="例：加一个身世神秘的女主，擅长音律"
+                />
+              </Form.Item>
+              <Divider />
+              <div className="flex justify-end">
+                <Button type="primary" onClick={submitAi} loading={aiSuggestMutation.isPending}>
+                  生成
+                </Button>
+              </div>
+            </Form>
+          </Spin>
+        ) : (
+          <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto !pr-1">
+            <div className="text-body-sm text-on-surface-variant">
+              共生成 {aiCards.length} 张建议，挑选需要的角色「采纳」，其他「放弃」。
+            </div>
+            {aiCards.map((card) => (
+              <CharacterSuggestionCard
+                key={card.name}
+                card={card}
+                accepting={aiAcceptMutation.isPending && aiAcceptMutation.variables?.name === card.name}
+                onAccept={() => acceptAi(card)}
+                onReject={() => rejectAi(card)}
+              />
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
 
-function CharacterCard({ character, onDelete }: { character: Character; onDelete: () => void }) {
+function CharacterCardView({ character, onDelete }: { character: Character; onDelete: () => void }) {
   const initial = character.name.charAt(0);
   const roleLabel = ROLE_LABEL[character.role] ?? character.role;
   const chip = ROLE_CHIP[character.role] ?? 'chip-secondary';
@@ -231,4 +388,111 @@ function CharacterCard({ character, onDelete }: { character: Character; onDelete
       </div>
     </div>
   );
+}
+
+function CharacterSuggestionCard({
+  card,
+  accepting,
+  onAccept,
+  onReject,
+}: {
+  card: CharacterCard;
+  accepting: boolean;
+  onAccept: () => void;
+  onReject: () => void;
+}) {
+  const focusLabel = ROLE_LABEL[card.role];
+  return (
+    <Card
+      size="small"
+      title={
+        <Space>
+          <span className="font-semibold text-on-surface">{card.name}</span>
+          <Tag color={card.role === 'protagonist' ? 'magenta' : card.role === 'antagonist' ? 'red' : 'blue'}>
+            {focusLabel}
+          </Tag>
+        </Space>
+      }
+      extra={
+        <Space>
+          <Button
+            type="primary"
+            size="small"
+            icon={<Check size={14} />}
+            onClick={onAccept}
+            loading={accepting}
+          >
+            采纳
+          </Button>
+          <Button size="small" icon={<X size={14} />} onClick={onReject}>
+            放弃
+          </Button>
+        </Space>
+      }
+    >
+      <div className="grid grid-cols-2 gap-3 text-body-sm">
+        <Section title="基础信息" text={describeBasic(card)} />
+        <Section title="性格" tags={card.personality.traits} />
+        <Section title="身世" text={describeBackstory(card)} />
+        <Section title="人物弧" text={describeArc(card)} />
+        {card.relationships.length > 0 && (
+          <div className="col-span-2">
+            <Section title="人物关系" text={card.relationships.map((r) => `${r.target_character}（${r.relation}）：${r.dynamic}`).join('\n')} />
+          </div>
+        )}
+        {card.voice_samples.length > 0 && (
+          <div className="col-span-2">
+            <Section title="代表性台词" text={card.voice_samples.map((s) => `「${s}」`).join('\n')} />
+          </div>
+        )}
+        {card.raw_text && (
+          <div className="col-span-2">
+            <Section title="人设描述" text={card.raw_text} />
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function Section({ title, text, tags }: { title: string; text?: string; tags?: string[] }) {
+  return (
+    <div>
+      <div className="text-body-xs text-on-surface-variant mb-1">{title}</div>
+      {tags ? (
+        <div className="flex flex-wrap gap-1">
+          {tags.map((t) => (
+            <Tag key={t}>{t}</Tag>
+          ))}
+        </div>
+      ) : (
+        <div className="whitespace-pre-wrap text-on-surface">{text}</div>
+      )}
+    </div>
+  );
+}
+
+function describeBasic(card: CharacterCard): string {
+  const parts: string[] = [];
+  if (card.basic_info.age) parts.push(card.basic_info.age);
+  if (card.basic_info.occupation) parts.push(card.basic_info.occupation);
+  if (card.basic_info.appearance) parts.push(card.basic_info.appearance);
+  if (card.basic_info.background) parts.push(card.basic_info.background);
+  return parts.join(' · ') || '（无）';
+}
+
+function describeBackstory(card: CharacterCard): string {
+  const parts: string[] = [];
+  if (card.backstory.origin) parts.push(card.backstory.origin);
+  if (card.backstory.key_events.length) parts.push(card.backstory.key_events.join('；'));
+  if (card.backstory.secrets.length) parts.push('秘密：' + card.backstory.secrets.join('；'));
+  return parts.join('\n') || '（无）';
+}
+
+function describeArc(card: CharacterCard): string {
+  const parts: string[] = [];
+  if (card.arc.start_state) parts.push(card.arc.start_state);
+  if (card.arc.key_transformations.length) parts.push(card.arc.key_transformations.join('；'));
+  if (card.arc.end_state) parts.push(card.arc.end_state);
+  return parts.join(' → ') || '（无）';
 }

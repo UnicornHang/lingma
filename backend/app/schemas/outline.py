@@ -1,5 +1,6 @@
 """Outline 相关的 Pydantic Schema"""
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -82,3 +83,63 @@ class OutlineTreeResponse(BaseModel):
 
     work_id: UUID
     nodes: list[OutlineTreeNode]
+
+
+# ==================== AI 推荐大纲（强 schema 校验）====================
+
+
+class PlotBeat(BaseModel):
+    """LLM 输出：节拍要点"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(..., min_length=1, max_length=100)
+    summary: str = Field(default="", max_length=500)
+
+
+class PlotChapter(BaseModel):
+    """LLM 输出：单章大纲"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(..., min_length=1, max_length=200)
+    summary: str = Field(default="", max_length=2000)
+    target_word_count: int = Field(default=3000, ge=100, le=20_000)
+    beats: list[PlotBeat] = Field(default_factory=list, max_length=12)
+    characters_involved: list[str] = Field(default_factory=list, max_length=20)
+    world_refs: list[str] = Field(default_factory=list, max_length=20)
+    key_events: list[str] = Field(default_factory=list, max_length=10)
+
+
+class PlotVolume(BaseModel):
+    """LLM 输出：单卷大纲"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    vol_no: int = Field(..., ge=1, le=100)
+    vol_title: str = Field(..., min_length=1, max_length=200)
+    summary: str = Field(default="", max_length=2000)
+    chapters: list[PlotChapter] = Field(default_factory=list, max_length=200)
+
+
+class PlotOutlineRequest(BaseModel):
+    """AI 推荐大纲请求"""
+
+    total_volumes: int = Field(default=3, ge=1, le=10)
+    target_chapter_count: int | None = Field(default=None, ge=1, le=200)
+    extra_hint: str | None = Field(default=None, max_length=500)
+
+
+class PlotOutlineResponse(BaseModel):
+    """AI 推荐大纲响应"""
+
+    volumes: list[PlotVolume]
+    model_used: str = "mock"
+    raw_content: str = ""  # 调试用：LLM 原始输出
+
+
+class BulkOutlineCreateRequest(BaseModel):
+    """批量写入大纲（接受 AI 推荐产出）"""
+
+    volumes: list[PlotVolume] = Field(default_factory=list, max_length=20)
+    extra_hint: str | None = None  # 占位,暂未使用
