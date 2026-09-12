@@ -18,7 +18,7 @@ import {
 
 import { chaptersApi, type Chapter, type TipTapDoc } from '@/api/chapters';
 import { useGenerationStream } from '@/hooks/useGenerationStream';
-import { RichEditor } from '@/components/RichEditor';
+import { RichEditor, type RichEditorHandle } from '@/components/RichEditor';
 
 // 示例大纲树 —— 后端接入后可换成真实 outline tree API
 const OUTLINE = [
@@ -52,24 +52,6 @@ function plainFromDoc(doc: TipTapDoc | null | undefined): string {
   return doc.content.map(walk).join('').trim();
 }
 
-/** 把纯文本包装成 TipTap 段落 doc */
-function plainToDoc(plain: string): TipTapDoc {
-  return {
-    type: 'doc',
-    content: plain.split(/\n+/).map((line) => ({
-      type: 'paragraph',
-      content: line ? [{ type: 'text', text: line }] : [],
-    })),
-  };
-}
-
-/** 拼接两个 TipTap doc —— 用于将生成内容追加到现有文档末尾 */
-function appendPlain(prev: TipTapDoc | null, more: string): TipTapDoc {
-  const baseContent = prev?.content ?? [];
-  const extra = plainToDoc(more).content ?? [];
-  return { type: 'doc', content: [...baseContent, ...extra] };
-}
-
 export default function ChapterEditorPage() {
   const { chapterId } = useParams<{ chapterId?: string }>();
   const navigate = useNavigate();
@@ -86,6 +68,7 @@ export default function ChapterEditorPage() {
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   const saveTimerRef = useRef<number | null>(null);
+  const editorRef = useRef<RichEditorHandle>(null);
 
   // 1) 加载章节
   useEffect(() => {
@@ -165,8 +148,15 @@ export default function ChapterEditorPage() {
       return;
     }
     try {
+      // 关键:AI 看到的是 DB 中的 plain_content,若本地有未保存编辑需先落盘,
+      // 避免 AI 续写接续在旧版本之后。
+      if (dirty) {
+        await persist();
+      }
       const resp = await chaptersApi.generate(chapterId, {
         chapter_id: chapterId,
+        mode: 'continue',
+        continue_from_chars: 1500,
         target_word_count: 800,
       });
       setTaskId(resp.task_id);
@@ -175,31 +165,42 @@ export default function ChapterEditorPage() {
       message.error(msg);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapterId, generation.status]);
+  }, [chapterId, generation.status, dirty, persist]);
 
-  // WS 收到 'start' 后才开始送 messages（按协议需在 connected 后才能 send start）
+  // 注册「待发 start 意图」。useGenerationStream 内部 effect 会在 WS 进入
+  // OPEN 时自动发送（StrictMode-safe：即使 WS 被 cleanup，新 WS 进入 OPEN 也会再发一次）
   useEffect(() => {
-    if (generation.status !== 'ready') return;
     if (!taskId) return;
     generation.start(
-      [
-        { role: 'system', content: '你是 LingMa Writer Agent，负责续写中文网文章节，保持原作风与人物声音。' },
-        { role: 'user',   content: `请基于以下已有正文续写 800 字左右，开头接续不要重复：\n\n${plainText}` },
-      ],
-      { model: 'gpt-4o-mini', max_tokens: 1500, temperature: 0.8 }
+      [],
+      {
+        mode: 'continue',
+        continue_from_chars: 1500,
+        max_tokens: 1500,
+        temperature: 0.85,
+        onDelta: (chunk) => editorRef.current?.insertContent(chunk),
+      }
     );
+    // 仅依赖 taskId —— status 变化不应再触发 start(避免重复)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generation.status, taskId]);
+  }, [taskId]);
 
-  // 收到 'done' 后把生成内容合并进编辑器并自动保存
+  // 收到 'done' —— 兜底:用后端清洗后的 generation.content 强制覆写编辑器,
+  // 防止任何残留的 <think> / thinking aloud 片段留在编辑器中。
+  // 然后标记 dirty 让 800ms 自动保存落盘
   useEffect(() => {
     if (generation.status !== 'done') return;
-    const merged = appendPlain(content, generation.content);
-    setContent(merged);
-    setPlainText(plainFromDoc(merged));
+    const cleaned = generation.content;
+    if (cleaned && editorRef.current) {
+      // 只在编辑器当前内容与 cleaned 不一致时才覆写(避免无谓抖动)
+      const currentText = editorRef.current.getText();
+      if (currentText.length !== cleaned.length) {
+        editorRef.current.setContent(cleaned);
+      }
+    }
     setDirty(true);
     setTaskId(null);
-    message.success(`Writer Agent 已续写 ${generation.content.length} 字`);
+    message.success(`Writer Agent 已续写 ${cleaned.length} 字`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generation.status, generation.content]);
 
@@ -377,6 +378,7 @@ export default function ChapterEditorPage() {
               </div>
             ) : (
               <RichEditor
+                ref={editorRef}
                 content={content}
                 editable={!isStreaming}
                 onChange={handleEditorChange}

@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import logging
-from typing import AsyncIterator
+from typing import AsyncIterator, Literal
 from uuid import UUID
 
 from sqlalchemy import select
@@ -119,6 +119,79 @@ class WriterAgent(BaseAgent):
         )
         async for delta in llm.stream(req, cfg):
             yield delta
+
+    # ------- 消息装配（供 WS / 测试复用） -------
+
+    async def build_messages(
+        self,
+        db: AsyncSession,
+        chapter_id: UUID,
+        *,
+        mode: Literal["continue", "generate"] = "generate",
+        continue_from_chars: int = 1500,
+        target_word_count: int | None = None,
+    ) -> tuple[list[LLMMessage], str, str]:
+        """加载上下文并装配 system + user 消息。
+
+        返回: (messages, model_name, user_prompt_text)
+        - ``mode="continue"`` 且章节有 plain_content 时,会取末尾 N 字作为 existing_tail
+        - ``mode="continue"`` 且章节为空时,降级为 ``generate`` 语义(避免给 LLM 看空块)
+        - ``target_word_count``(来自请求)优先于 outline 默认值
+        """
+        chapter = await _load_chapter(db, chapter_id)
+        work = await _load_work(db, chapter.work_id)
+        outline = (
+            await _load_outline_node(db, chapter.outline_node_id)
+            if chapter.outline_node_id
+            else None
+        )
+        world = await _maybe_load_world(db, chapter.work_id)
+        characters = await _load_characters(db, chapter.work_id)
+        previous_summary = await _load_previous_chapter_summary(db, chapter)
+
+        # 计算有效目标字数:请求 > outline > 默认 3000
+        effective_target = target_word_count
+        if not effective_target:
+            effective_target = (
+                outline.target_word_count if outline and outline.target_word_count else 3000
+            )
+
+        # 续写模式:取正文末尾 N 字;空章节则降级为 generate
+        existing_tail: str | None = None
+        effective_mode = mode
+        if mode == "continue":
+            tail_source = (chapter.plain_content or "").strip()
+            if tail_source:
+                existing_tail = tail_source[-continue_from_chars:]
+            else:
+                logger.info(
+                    "WriterAgent build_messages: 章节 %s 正文为空,降级为 generate 模式",
+                    chapter_id,
+                )
+                effective_mode = "generate"
+
+        system = build_system_prompt(effective_target)
+        user = build_user_prompt(
+            work=work,
+            chapter=chapter,
+            outline=outline,
+            world=world,
+            characters=characters,
+            previous_summary=previous_summary,
+            existing_tail=existing_tail,
+            target_word_count=effective_target,
+        )
+        messages = [
+            LLMMessage(role="system", content=system),
+            LLMMessage(role="user", content=user),
+        ]
+        logger.info(
+            "WriterAgent build_messages: chapter=%s, mode=%s, target=%s字",
+            chapter_id,
+            effective_mode,
+            effective_target,
+        )
+        return messages, "mock", user
 
 
 # ==================== DB 加载辅助 ====================

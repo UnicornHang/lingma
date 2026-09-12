@@ -13,6 +13,7 @@ class Provider(str, enum.Enum):
     ANTHROPIC = "anthropic"
     DEEPSEEK = "deepseek"
     QWEN = "qwen"
+    MINIMAX = "MiniMax"
     OLLAMA = "ollama"
     LMSTUDIO = "lmstudio"
     VLLM = "vllm"

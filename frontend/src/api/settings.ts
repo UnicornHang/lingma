@@ -6,6 +6,7 @@ export const PROVIDERS = [
   { value: 'anthropic', label: 'Anthropic', color: '#CB785C', needsKey: true,  defaultBaseUrl: '' },
   { value: 'deepseek',  label: 'DeepSeek',  color: '#4D8AFF', needsKey: true,  defaultBaseUrl: 'https://api.deepseek.com/v1' },
   { value: 'qwen',      label: '通义千问',  color: '#FF6A00', needsKey: true,  defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+  { value: 'MiniMax',   label: 'MiniMax',   color: '#1E88E5', needsKey: true,  defaultBaseUrl: 'https://api.MiniMax.cn/v1' },
   { value: 'ollama',    label: 'Ollama (本地)', color: '#059669', needsKey: false, defaultBaseUrl: 'http://127.0.0.1:11434/v1' },
   { value: 'lmstudio',  label: 'LM Studio', color: '#7C3AED', needsKey: false, defaultBaseUrl: 'http://127.0.0.1:1234/v1' },
   { value: 'vllm',      label: 'vLLM',      color: '#9333EA', needsKey: false, defaultBaseUrl: 'http://127.0.0.1:8000/v1' },
@@ -55,6 +56,18 @@ export interface ApiConfigCreate {
 
 export type ApiConfigUpdate = Partial<ApiConfigCreate>;
 
+export interface ProviderModelsRequest {
+  provider: string;
+  base_url?: string;
+  api_key?: string;
+}
+
+export interface ProviderModelsResponse {
+  models: string[];
+  source: 'api' | 'static';
+  note?: string;
+}
+
 export const apiConfigsApi = {
   list: () => http.get<ApiConfig[]>('/settings/api-configs'),
 
@@ -70,4 +83,8 @@ export const apiConfigsApi = {
   /** 一次性查看明文 Key —— 后端不持久化 */
   reveal: (id: string) =>
     http.post<{ api_key: string }>(`/settings/api-configs/${id}/reveal`, {}),
+
+  /** 拉取 Provider 可用模型清单 —— 后端不持久化 */
+  listModels: (data: ProviderModelsRequest) =>
+    http.post<ProviderModelsResponse>('/settings/api-configs/models', data),
 };

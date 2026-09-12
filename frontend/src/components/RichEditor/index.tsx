@@ -1,7 +1,7 @@
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Button } from 'antd';
-import { useEffect } from 'react';
+import { forwardRef, useEffect, useImperativeHandle } from 'react';
 import {
   Bold,
   Italic,
@@ -33,6 +33,20 @@ export interface TipTapDoc {
   content?: TipTapNode[];
 }
 
+/**
+ * 暴露给父组件的命令式句柄 —— 用于 AI 流式生成时实时插入 chunk
+ */
+export interface RichEditorHandle {
+  /** 在光标位置插入纯文本/HTML,返回是否成功。允许在 read-only 文档上调用 */
+  insertContent: (text: string) => boolean;
+  /** 整体替换编辑器内容(用于 done 兜底:用后端清洗后的 content 强制覆盖) */
+  setContent: (text: string) => boolean;
+  /** 获取当前纯文本 */
+  getText: () => string;
+  /** 聚焦编辑器 */
+  focus: () => void;
+}
+
 interface RichEditorProps {
   /** TipTap JSON 内容；传 null 则为空文档 */
   content?: TipTapDoc | null;
@@ -52,14 +66,12 @@ interface RichEditorProps {
  * - 支持粗体/斜体/删除线/行内代码/标题/引用/列表/撤销
  * - 内容为 TipTap JSON（与后端 Chapter.content 字段一致）
  * - onChange 同时给出纯文本，便于字数统计 / RAG 索引
+ * - 通过 ref 暴露 insertContent / getText / focus,支持外部(如 AI 流式)程序化编辑
  */
-export function RichEditor({
-  content,
-  editable = true,
-  onChange,
-  onSelectionChange,
-  className,
-}: RichEditorProps) {
+export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(function RichEditor(
+  { content, editable = true, onChange, onSelectionChange, className },
+  ref
+) {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -81,6 +93,31 @@ export function RichEditor({
       },
     },
   });
+
+  // 暴露命令式 API
+  useImperativeHandle(
+    ref,
+    () => ({
+      insertContent: (text: string) => {
+        if (!editor) return false;
+        // TipTap 允许在 read-only 文档上做程序化编辑(commands.insertContent)
+        editor.commands.insertContent(text);
+        return true;
+      },
+      setContent: (text: string) => {
+        if (!editor) return false;
+        // 整体替换 —— 用于 done 兜底,把可能含污染的内容替换为后端清洗后的版本
+        // false 表示不触发 onUpdate(避免自身引发的更新又被 status effect 当 dirty 触发额外保存)
+        editor.commands.setContent(text, false);
+        return true;
+      },
+      getText: () => editor?.getText() ?? '',
+      focus: () => {
+        editor?.commands.focus('end');
+      },
+    }),
+    [editor]
+  );
 
   // editable 变化时同步
   useEffect(() => {
@@ -106,7 +143,7 @@ export function RichEditor({
       </div>
     </div>
   );
-}
+});
 
 interface ToolbarProps {
   editor: Editor;

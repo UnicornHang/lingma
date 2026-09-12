@@ -120,7 +120,9 @@ async def generate_chapter_endpoint(
 
     params: dict = {}
     if payload:
-        params = payload.model_dump(exclude_none=True)
+        # mode='json' 确保 UUID 等非 JSON 原生类型序列化为字符串,
+        # 否则 SQLAlchemy 写 params JSON 列时会抛 TypeError
+        params = payload.model_dump(exclude_none=True, mode="json")
 
     task = GenerationTask(
         work_id=chapter.work_id,

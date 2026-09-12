@@ -13,6 +13,8 @@ import {
   Switch,
   Button,
   Tag,
+  AutoComplete,
+  Tooltip,
 } from 'antd';
 import {
   Sliders,
@@ -28,6 +30,7 @@ import {
   Eye,
   EyeOff,
   Power,
+  RefreshCw,
 } from 'lucide-react';
 
 import {
@@ -367,6 +370,54 @@ function LLMSettings() {
 }
 
 function ApiConfigForm({ form, isEdit }: { form: ReturnType<typeof Form.useForm>[0]; isEdit: boolean }) {
+  const { message } = App.useApp();
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [fetching, setFetching] = useState(false);
+  const [modelSource, setModelSource] = useState<'api' | 'static' | null>(null);
+
+  const fetchModels = async () => {
+    try {
+      const v = (await form.validateFields(['provider', 'base_url'])) as {
+        provider: string;
+        base_url?: string;
+      };
+      // 编辑模式下 api_key 留空表示不修改, 这种情况下不传 api_key, 由后端不强制要求
+      let apiKey: string | undefined;
+      if (!isEdit) {
+        const keyField = (await form
+          .validateFields(['api_key'])
+          .catch(() => ({}))) as { api_key?: string };
+        apiKey = keyField.api_key || undefined;
+      }
+      setFetching(true);
+      try {
+        const r = await apiConfigsApi.listModels({
+          provider: v.provider,
+          base_url: v.base_url || undefined,
+          api_key: apiKey,
+        });
+        setModelOptions(r.models);
+        setModelSource(r.source);
+        if (r.models.length === 0) {
+          message.warning(r.note ?? 'Provider 未返回任何模型');
+        } else {
+          message.success(
+            r.source === 'static'
+              ? `已加载内置静态清单 (${r.models.length} 个)`
+              : `从 Provider API 拉取到 ${r.models.length} 个模型${r.note ? ` · ${r.note}` : ''}`
+          );
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '拉取失败';
+        message.error(msg);
+      } finally {
+        setFetching(false);
+      }
+    } catch {
+      /* 表单校验失败, 已有红字提示 */
+    }
+  };
+
   return (
     <Form form={form} layout="vertical" className="mt-2">
       <Form.Item label="备注名" name="name" rules={[{ required: true, min: 1, max: 100 }]}>
@@ -379,6 +430,9 @@ function ApiConfigForm({ form, isEdit }: { form: ReturnType<typeof Form.useForm>
           onChange={(v) => {
             const meta = providerMeta(v as string);
             form.setFieldValue('base_url', meta.defaultBaseUrl);
+            // 切换 Provider 时清空旧清单
+            setModelOptions([]);
+            setModelSource(null);
           }}
         />
       </Form.Item>
@@ -398,8 +452,42 @@ function ApiConfigForm({ form, isEdit }: { form: ReturnType<typeof Form.useForm>
         <Input placeholder="可留空，将使用 Provider 默认值" />
       </Form.Item>
 
-      <Form.Item label="模型名" name="model_name" rules={[{ required: true }]}>
-        <Input placeholder="如：gpt-4o-mini / deepseek-chat / qwen2.5:14b" />
+      <Form.Item
+        label={
+          <div className="flex items-center justify-between">
+            <span>模型名</span>
+            <Tooltip title={isEdit ? '编辑时若未填 Key，将尝试不带 Key 拉取' : '从 Provider API 拉取可用模型'}>
+              <Button
+                size="small"
+                type="link"
+                icon={<RefreshCw size={14} className={fetching ? 'animate-spin' : ''} />}
+                onClick={fetchModels}
+                loading={fetching}
+                style={{ padding: 0, height: 'auto' }}
+              >
+                {modelOptions.length > 0 ? `刷新 (${modelOptions.length})` : '获取列表'}
+              </Button>
+            </Tooltip>
+          </div>
+        }
+        name="model_name"
+        rules={[{ required: true }]}
+        extra={
+          modelSource === 'static'
+            ? '当前模型清单来自内置静态数据，Anthropic 不暴露 /models 端点'
+            : modelSource === 'api'
+              ? '当前模型清单来自 Provider API'
+              : null
+        }
+      >
+        <AutoComplete
+          placeholder="如：gpt-4o-mini / deepseek-chat / qwen2.5:14b / MiniMax-Plus"
+          options={modelOptions.map((m) => ({ value: m }))}
+          filterOption={(input, option) =>
+            (option?.value as string).toLowerCase().includes(input.toLowerCase())
+          }
+          allowClear
+        />
       </Form.Item>
 
       <div className="grid grid-cols-2 gap-3">

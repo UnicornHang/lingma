@@ -37,7 +37,7 @@ class ApiConfigCreate(BaseModel):
     """创建 API 配置"""
 
     name: str = Field(..., min_length=1, max_length=100, description="备注名")
-    provider: str = Field(..., description="openai | anthropic | deepseek | qwen | ollama | custom")
+    provider: str = Field(..., description="openai | anthropic | deepseek | qwen | MiniMax | ollama | lmstudio | vllm | custom")
     api_key: SecretStr | None = Field(None, description="API Key（加密存储）")
     base_url: str | None = Field(None, description="自定义 Base URL")
     model_name: str = Field(..., description="默认模型名")
@@ -86,3 +86,19 @@ class ApiKeyReveal(BaseModel):
     """一次性展示明文 Key"""
 
     api_key: str
+
+
+class ProviderModelsRequest(BaseModel):
+    """拉取 Provider 模型清单（不持久化 api_key）"""
+
+    provider: str = Field(..., description="openai | anthropic | deepseek | qwen | MiniMax | ollama | lmstudio | vllm | custom")
+    base_url: str | None = Field(None, description="可选，留空则用 Provider 默认值")
+    api_key: str | None = Field(None, description="仅本次请求使用，不存储")
+
+
+class ProviderModelsResponse(BaseModel):
+    """模型清单响应"""
+
+    models: list[str] = Field(default_factory=list)
+    source: str = Field(..., description="api 实时拉取 | static 内置静态清单")
+    note: str | None = None

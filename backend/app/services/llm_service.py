@@ -84,11 +84,23 @@ DEFAULT_BASE_URLS: dict[Provider, str] = {
     Provider.ANTHROPIC: "https://api.anthropic.com/v1",
     Provider.DEEPSEEK: "https://api.deepseek.com/v1",
     Provider.QWEN: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    Provider.MINIMAX: "https://api.MiniMax.cn/v1",
     Provider.OLLAMA: "http://127.0.0.1:11434/v1",
     Provider.LMSTUDIO: "http://127.0.0.1:1234/v1",
     Provider.VLLM: "http://127.0.0.1:8000/v1",
     Provider.CUSTOM: "",
 }
+
+
+# Anthropic 没有公开的 /models 端点，这里维护一份常用清单
+_ANTHROPIC_STATIC_MODELS: list[str] = [
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-sonnet-20240620",
+    "claude-3-5-haiku-20241022",
+    "claude-3-opus-20240229",
+    "claude-3-sonnet-20240229",
+    "claude-3-haiku-20240307",
+]
 
 
 async def resolve_provider_config(
@@ -124,6 +136,97 @@ async def resolve_provider_config(
                 cost_per_1k_output=cfg.cost_per_1k_output,
             )
     return None
+
+
+# ==================== 模型清单 ====================
+
+
+@dataclass
+class ProviderModelsResult:
+    """模型清单拉取结果"""
+
+    models: list[str]
+    source: str  # "api" | "static"
+    note: str | None = None
+
+
+async def list_provider_models(
+    provider: str,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    *,
+    timeout: float = 10.0,
+) -> ProviderModelsResult:
+    """从 Provider 拉取可用模型清单
+
+    - Anthropic：返回内置静态清单（官方不暴露 /models）
+    - OpenAI 兼容（openai / deepseek / qwen / MiniMax / lmstudio / vllm / custom）：GET {base_url}/models
+    - Ollama：GET {base_url}/api/tags（Ollama 自己的端点）
+    - 本地推理（ollama / lmstudio / vllm）允许不传 api_key
+
+    Raises:
+        LLMError: 当 base_url 缺失或网络异常时
+    """
+    try:
+        provider_enum = Provider(provider)
+    except ValueError as e:
+        raise LLMError(f"未知 provider: {provider}") from e
+
+    # Anthropic：静态清单
+    if provider_enum == Provider.ANTHROPIC:
+        return ProviderModelsResult(
+            models=_ANTHROPIC_STATIC_MODELS,
+            source="static",
+            note="Anthropic 官方未暴露 /models 端点，返回内置清单",
+        )
+
+    base = (base_url or DEFAULT_BASE_URLS.get(provider_enum, "")).rstrip("/")
+    if not base:
+        raise LLMError(
+            f"{provider} 需要填写 base_url，例如 "
+            f"{DEFAULT_BASE_URLS.get(provider_enum) or 'https://your-endpoint/v1'}"
+        )
+
+    # Ollama 端点是 /api/tags，不是 /v1/models
+    if provider_enum == Provider.OLLAMA:
+        url = base.removesuffix("/v1") + "/api/tags"
+    else:
+        url = base + "/models"
+
+    headers: dict[str, str] = {"Accept": "application/json"}
+    if api_key and provider_enum not in LOCAL_PROVIDERS:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+    except ImportError as e:
+        raise LLMError("缺少 httpx 依赖，请安装：pip install httpx") from e
+    except Exception as e:  # httpx.HTTPError, JSONDecodeError, ...
+        raise LLMError(f"拉取模型清单失败：{type(e).__name__}: {e}") from e
+
+    # 提取模型 ID：兼容 OpenAI `{data:[{id:..}]}` 与 Ollama `{models:[{name:..}]}`
+    raw_list = data.get("data") or data.get("models") or []
+    models: list[str] = []
+    for item in raw_list:
+        if not isinstance(item, dict):
+            continue
+        mid = item.get("id") or item.get("name")
+        if isinstance(mid, str) and mid.strip():
+            models.append(mid.strip())
+
+    if not models:
+        return ProviderModelsResult(
+            models=[],
+            source="api",
+            note="Provider 返回了空列表，请确认 Key 与权限",
+        )
+
+    return ProviderModelsResult(models=models, source="api")
 
 
 # ==================== 服务 ====================
@@ -181,7 +284,8 @@ class LLMService:
         msgs = [{"role": m.role, "content": m.content} for m in req.messages]
         try:
             resp = await client.chat.completions.create(
-                model=req.model or cfg.model,
+                # 优先用用户在 APIConfig 里配置的模型;req.model 仅作 mock 兜底
+                model=cfg.model or req.model,
                 messages=msgs,
                 temperature=req.temperature,
                 max_tokens=req.max_tokens,
@@ -200,7 +304,8 @@ class LLMService:
         )
         return LLMResponse(
             content=content,
-            model=req.model or cfg.model,
+            # 与上行请求保持一致,优先 cfg.model
+            model=cfg.model or req.model,
             input_tokens=in_tok,
             output_tokens=out_tok,
             cost_usd=cost,
@@ -219,7 +324,8 @@ class LLMService:
         msgs = [{"role": m.role, "content": m.content} for m in req.messages]
         try:
             stream = await client.chat.completions.create(
-                model=req.model or cfg.model,
+                # 优先用用户在 APIConfig 里配置的模型;req.model 仅作 mock 兜底
+                model=cfg.model or req.model,
                 messages=msgs,
                 temperature=req.temperature,
                 max_tokens=req.max_tokens,
@@ -277,6 +383,29 @@ class LLMService:
         async for delta, _usage in self._real_stream(cfg, req):
             if delta:
                 yield delta
+
+    async def stream_with_usage(
+        self,
+        req: LLMRequest,
+        cfg: ProviderConfig | None = None,
+    ) -> AsyncIterator[tuple[str, dict[str, int] | None]]:
+        """流式输出 + token 用量。
+
+        - 每条 delta 携带 ``usage_or_None``(仅 OpenAI 兼容的最后一个 chunk 会带真实数字)
+        - Mock 模式下 usage 始终为 None
+        - 调用方应取最后一个非空 usage 作为 ``final_usage``
+        """
+        if not req.messages:
+            raise LLMError("messages 不能为空", code="EMPTY_MESSAGES")
+            yield ("", None)  # noqa: 让 async generator 合法
+            return
+        if cfg is None:
+            async for d in self._mock_stream(req):
+                yield d, None
+            return
+        async for delta, usage in self._real_stream(cfg, req):
+            if delta:
+                yield delta, usage
 
     async def health_check(self) -> bool:
         return True

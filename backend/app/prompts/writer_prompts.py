@@ -32,6 +32,11 @@ def build_system_prompt(target_words: int) -> str:
         5. 不要复述上一章；不要加入 OOC 解释；不要输出元数据。
         6. 输出格式：直接输出正文，纯文本，不需要标题或 Markdown 装饰。
         7. 严禁抄袭已有作品。如遇敏感内容请合理化处理。
+
+        【重要 - 输出纪律】
+        8. **不要 thinking aloud**！严禁在正文中夹杂「Let me / I should / Wait / Maybe / I'll aim / try again」等英文思考片段。
+        9. 如确需推理过程，必须包裹在 <think>...</think> 块中(且该块在正文输出前完成)。
+        10. 直接开始第一句正文 —— 不要"Listo:"、"好的我开始写"、"Chapter X:" 之类的过渡句。
         """
     ).strip()
 
@@ -54,6 +59,8 @@ def build_user_prompt(
     world: "WorldBible | None" = None,
     characters: "list[Character] | None" = None,
     previous_summary: "str | None" = None,
+    existing_tail: "str | None" = None,
+    target_word_count: "int | None" = None,
 ) -> str:
     parts: list[str] = []
 
@@ -95,13 +102,26 @@ def build_user_prompt(
     if previous_summary:
         parts.append(f"【上一章摘要】\n{previous_summary}\n")
 
+    # 已有正文尾段（续写模式）
+    if existing_tail:
+        parts.append(
+            f"【本章已有正文（请从末尾自然续写，不要重复、不要总结前文）】\n"
+            f"{existing_tail}\n"
+        )
+
     # 任务指令
+    target_words = target_word_count or chapter.word_count or 3000
+    tail_hint = (
+        "现在请从上述已有正文的末尾自然续写，不要重复、不要总结前文："
+        if existing_tail
+        else "现在请开始撰写本章正文："
+    )
     parts.append(
         f"\n【本章任务】\n"
         f"标题：{chapter.title}\n"
-        f"目标字数：约 {chapter.word_count or 3000} 字\n"
+        f"目标字数：约 {target_words} 字\n"
         f"摘要要求：{chapter.summary or _NONE_DESC}\n\n"
-        f"现在请开始撰写本章正文："
+        f"{tail_hint}"
     )
 
     return "\n".join(parts)

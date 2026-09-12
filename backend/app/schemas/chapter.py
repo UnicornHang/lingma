@@ -1,6 +1,6 @@
 """Chapter 相关的 Pydantic Schema"""
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -66,6 +66,16 @@ class GenerateChapterRequest(BaseModel):
     target_word_count: int | None = Field(None, ge=500, le=20_000)
     style_overrides: dict[str, Any] = Field(
         default_factory=dict, description="本次覆盖的 Prompt 变量"
+    )
+    mode: Literal["continue", "generate"] = Field(
+        "continue",
+        description="continue=续写已有正文（追加），generate=全量重写整章",
+    )
+    continue_from_chars: int = Field(
+        1500,
+        ge=100,
+        le=5000,
+        description="续写模式下，取章节末尾最近 N 字作为 prompt 上下文",
     )
 
 

@@ -2,7 +2,7 @@
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_db
@@ -11,10 +11,13 @@ from app.schemas.setting import (
     ApiConfigRead,
     ApiConfigUpdate,
     ApiKeyReveal,
+    ProviderModelsRequest,
+    ProviderModelsResponse,
     SettingsBundle,
     SettingsUpdate,
 )
 from app.services import setting_service
+from app.services.llm_service import LLMError, list_provider_models
 
 router = APIRouter()
 
@@ -116,3 +119,28 @@ async def reveal_api_key_endpoint(
 ) -> ApiKeyReveal:
     """⚠️ 谨慎调用，明文 Key 不会持久化返回"""
     return await setting_service.reveal_api_key(db, config_id)
+
+
+@router.post(
+    "/api-configs/models",
+    response_model=ProviderModelsResponse,
+    summary="拉取 Provider 可用模型清单（不持久化）",
+)
+async def list_provider_models_endpoint(
+    payload: ProviderModelsRequest,
+) -> ProviderModelsResponse:
+    """用于前端配置表单的「获取模型列表」按钮。
+
+    - OpenAI 兼容（OpenAI / DeepSeek / Qwen / MiniMax / LMStudio / vLLM）：GET {base_url}/models
+    - Ollama：GET {base_url}/api/tags
+    - Anthropic：返回内置静态清单
+    """
+    try:
+        result = await list_provider_models(
+            provider=payload.provider,
+            base_url=payload.base_url,
+            api_key=payload.api_key,
+        )
+    except LLMError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return ProviderModelsResponse(models=result.models, source=result.source, note=result.note)

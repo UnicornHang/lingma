@@ -54,12 +54,19 @@ export interface ChapterUpdate {
   status?: ChapterStatus;
 }
 
+/** 章节生成模式：continue=续写（默认），generate=全量重写 */
+export type GenerateMode = 'continue' | 'generate';
+
 export interface GenerateChapterRequest {
   chapter_id?: string;
   title?: string;
   outline_node_id?: string;
   target_word_count?: number;
   style_overrides?: Record<string, unknown>;
+  /** 续写 vs 全量重写（默认 continue） */
+  mode?: GenerateMode;
+  /** 续写模式下取章节末尾最近 N 字作为 prompt 上下文（默认 1500） */
+  continue_from_chars?: number;
 }
 
 export interface GenerateChapterResponse {
