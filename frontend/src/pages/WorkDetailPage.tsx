@@ -103,7 +103,7 @@ export default function WorkDetailPage() {
         </Link>
 
         {/* Hero */}
-        <section className="p-8 rounded-2xl bg-gradient-to-br from-[#14b8a6] via-[#10b981] to-[#34d399] text-white shadow-L2-popover flex items-center gap-6">
+        <section className="p-8 rounded-2xl bg-gradient-to-br from-[#047857] via-[#065f46] to-[#064e3b] text-white shadow-L2-popover flex items-center gap-6">
           <div className="h-32 w-32 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center">
             <BookOpen size={64} className="text-white" strokeWidth={1.5} />
           </div>

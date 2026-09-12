@@ -33,10 +33,10 @@ const STATUS_CHIP: Record<string, { label: string; cls: string; icon?: React.Rea
 };
 
 const STATUS_GRADIENT: Record<string, string> = {
-  writing:  'from-[#14b8a6] to-[#10b981]',     // Teal → Emerald (light)
-  finished: 'from-[#34d399] to-[#059669]',     // Bright emerald → deep emerald
-  draft:    'from-[#94a3b8] to-[#475569]',     // Slate gradient
-  archived: 'from-[#38bdf8] to-[#0369a1]',     // Sky blue (archived = secondary status)
+  writing:  'from-[#047857] via-[#0d9488] to-[#14b8a6]',  // Figma: 深emerald → teal
+  finished: 'from-[#f59e0b] via-[#fbbf24] to-[#fde68a]',  // Figma: 琥珀渐变
+  draft:    'from-[#94a3b8] via-[#cbd5e1] to-[#e2e8f0]',  // 浅灰渐变
+  archived: 'from-[#b91c1c] via-[#dc2626] to-[#f87171]',  // 暗红渐变
 };
 
 function WorkCard({ work }: { work: Work }) {
@@ -50,23 +50,23 @@ function WorkCard({ work }: { work: Work }) {
   return (
     <Link
       to={`/works/${work.id}`}
-      className={`overflow-hidden flex flex-col ${
-        isCurrent ? 'surface-card-active' : 'surface-card'
-      } hover:border-primary-container transition-colors cursor-pointer`}
+      className={`surface-card overflow-hidden flex flex-col cursor-pointer transition-all ${
+        isCurrent ? 'shadow-L2-popover' : ''
+      }`}
     >
-      {/* Banner */}
-      <div
-        className={`relative h-32 bg-gradient-to-br ${gradient}`}
-      >
+      {/* Banner — emerald/teal gradient (Figma) */}
+      <div className={`relative h-32 bg-gradient-to-br ${gradient}`}>
         <div className="absolute top-3 right-3">
-          <span className={status.cls}>{status.label}</span>
+          <span className="px-2 py-0.5 rounded-full bg-white/90 text-on-surface text-label-sm font-medium backdrop-blur-sm">
+            {status.label}
+          </span>
         </div>
         <div className="absolute top-3 left-3">
-          <BookOpen size={28} className="text-white" />
+          <BookOpen size={28} className="text-white/90" />
         </div>
         {isCurrent && (
           <div className="absolute bottom-3 left-3">
-            <span className="px-2 py-0.5 rounded bg-primary text-white text-label-sm font-semibold">
+            <span className="px-2 py-0.5 rounded bg-white text-primary text-label-sm font-semibold">
               当前
             </span>
           </div>
@@ -85,7 +85,7 @@ function WorkCard({ work }: { work: Work }) {
           )}
         </div>
         <p className="text-body-sm text-on-surface-variant text-ellipsis-2">
-          讲述陈平安从骊珠洞天走出后的一段尘缘。他要修的不只是大道，更是人心……
+          {work.logline || '讲述一段尘缘。'}
         </p>
         <div className="flex items-center gap-1 mt-1">
           <span className={genre.chipClass}>{genre.label}</span>

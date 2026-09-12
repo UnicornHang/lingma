@@ -6,18 +6,18 @@
    LingMa Novel Studio · Fresh Emerald Studio (v0.2 翡翠版)
    ============================================================ */
 :root {
-  /* Primary Spectrum: Teal & Emerald (lighter) */
-  --color-primary: #0d9488;
-  --color-primary-hover: #14b8a6;
-  --color-primary-active: #0f766e;
-  --color-primary-container: #ccfbf1;
-  --color-on-primary-container: #134e4a;
-  --color-primary-fixed: #f0fdfa;
+  /* Primary Spectrum: Deep Emerald (Figma mockup) */
+  --color-primary: #047857;
+  --color-primary-hover: #065f46;
+  --color-primary-active: #064e3b;
+  --color-primary-container: #d1fae5;
+  --color-on-primary-container: #064e3b;
+  --color-primary-fixed: #f0fdf4;
   --color-primary-fixed-dim: #14b8a6;
   --color-on-primary: #ffffff;
-  --color-on-primary-fixed: #042f2e;
+  --color-on-primary-fixed: #052e16;
 
-  /* Primary Vibrant: Emerald accent (lighter) */
+  /* Primary Vibrant: Emerald accent */
   --color-primary-vibrant: #10b981;
   --color-primary-vibrant-hover: #34d399;
 
@@ -27,40 +27,50 @@
   --color-secondary-container: #e0f2fe;
   --color-on-secondary-container: #075985;
 
-  /* Tertiary Spectrum: Green (lighter) */
-  --color-tertiary: #10b981;
-  --color-tertiary-hover: #34d399;
-  --color-tertiary-container: #d1fae5;
-  --color-on-tertiary-container: #065f46;
+  /* Tertiary Spectrum: Amber (Figma 已完结横幅) */
+  --color-tertiary: #f59e0b;
+  --color-tertiary-hover: #d97706;
+  --color-tertiary-container: #fef3c7;
+  --color-on-tertiary-container: #78350f;
+
+  /* Status palette (Figma 状态色) */
+  --color-status-writing: #047857;   /* 深绿 */
+  --color-status-finished: #f59e0b;  /* 琥珀 */
+  --color-status-draft: #94a3b8;     /* 灰 */
+  --color-status-archived: #b91c1c;  /* 暗红 */
 
   /* Semantic */
   --color-error: #ef4444;
   --color-error-container: #fee2e2;
   --color-on-error-container: #7f1d1d;
 
-  /* Surface tiers (mint tints) */
+  /* Surface tiers (cream + mint 混搭, 仿 Figma) */
   --color-surface: #ffffff;
-  --color-surface-dim: #f0fdf4;
+  --color-surface-dim: #fefce8;             /* 米色 dim */
   --color-surface-bright: #ffffff;
   --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #f0fdf4;
-  --color-surface-container: #ecfdf5;
+  --color-surface-container-low: #f0fdf4;   /* 浅 mint 卡片底 */
+  --color-surface-container: #ecfdf5;       /* 卡片层 */
   --color-surface-container-high: #d1fae5;
   --color-surface-container-highest: #a7f3d0;
 
-  /* Background (Crisp daylight slate-white) */
-  --color-background: #f8fafc;
+  /* Background (深 emerald 主背景, 仿 Figma 侧边栏外) */
+  --color-background: #ecfdf5;              /* light mint — modal backdrop safety */
 
-  /* On-Surface text (darker for better contrast) */
+  /* On-Surface text */
   --color-on-surface: #0f172a;
   --color-on-surface-variant: #334155;
   --color-on-surface-low: #64748b;
 
-  /* Outline (stronger) */
+  /* Outline */
   --color-outline: #64748b;
   --color-outline-variant: #cbd5e1;
 
-  /* Legacy aliases (过渡兼容) */
+  /* Banner beige (作品卡横幅米色) */
+  --color-banner-beige: #fef3c7;
+  --color-banner-beige-2: #fde68a;
+
+  /* Legacy aliases */
   --color-bg: var(--color-background);
   --color-bg-secondary: var(--color-surface-container-low);
   --color-text-primary: var(--color-on-surface);
@@ -144,25 +154,26 @@ select:focus-visible {
   display: flex;
   height: 100vh;
   width: 100vw;
-  background: var(--color-background);
+  background: #ecfdf5;          /* light mint so modal backdrops don't tint dark */
   overflow: hidden;
 }
 .app-sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
   background: #ffffff;
-  border-right: 1px solid rgba(187, 247, 208, 0.4);
+  border-right: 1px solid rgba(6, 95, 70, 0.10);
   display: flex;
   flex-direction: column;
   height: 100vh;
-  box-shadow: 2px 0 12px rgba(13, 148, 136, 0.03);
+  box-shadow: 2px 0 12px rgba(6, 78, 59, 0.04);
+  color: var(--color-on-surface);
 }
 .app-header {
   height: var(--header-height);
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(187, 247, 208, 0.5);
+  border-bottom: 1px solid rgba(6, 95, 70, 0.10);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -175,24 +186,35 @@ select:focus-visible {
   flex: 1;
   height: calc(100vh - var(--header-height));
   overflow: auto;
-  background: rgba(240, 253, 244, 0.5);
+  background: #ecfdf5;       /* Light mint (Figma content bg) */
+  color: var(--color-on-surface);
+}
+/* Home page uses dark emerald bg explicitly */
+.app-content > .home-dark {
+  background: linear-gradient(180deg, #064e3b 0%, #047857 100%);
+  color: #ecfdf5;
 }
 
 /* ============================================================
    Component utilities
    ============================================================ */
-/* Card surface (L1 elevation) - Teal-infused hairline */
+/* Card surface (L1 elevation) - borderless by default, hover reveal */
 .surface-card {
   background: #ffffff;
-  border: 1px solid var(--color-outline-variant);
+  border: 1px solid transparent;
   border-radius: 12px;
   box-shadow: 0 1px 3px 0 rgba(13, 148, 136, 0.04), 0 1px 2px 0 rgba(15, 23, 42, 0.03);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.surface-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 14px rgba(20, 184, 166, 0.18);
 }
 .surface-card-active {
   background: #ffffff;
   border: 2px solid var(--color-primary);
   border-radius: 12px;
-  box-shadow: 0 10px 25px -5px rgba(13, 148, 136, 0.08), 0 8px 10px -6px rgba(2, 132, 199, 0.04);
+  box-shadow: 0 10px 25px -5px rgba(13, 148, 136, 0.10), 0 8px 10px -6px rgba(2, 132, 199, 0.04);
 }
 
 /* Chip / Tag — Plotline / Entity */
@@ -266,7 +288,7 @@ select:focus-visible {
   font-weight: 500;
 }
 
-/* Sidebar nav item — Emerald active state */
+/* Sidebar nav item — white sidebar, dark text, green active */
 .nav-item {
   display: flex;
   align-items: center;
@@ -285,10 +307,10 @@ select:focus-visible {
   color: var(--color-on-surface);
 }
 .nav-item-active {
-  background: #059669;
+  background: #047857;       /* Deep emerald pill (Figma active style) */
   color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+  box-shadow: 0 4px 12px rgba(4, 120, 87, 0.30);
 }
 
 /* Toggle (Material switch — Emerald variant) */

@@ -67,7 +67,9 @@ export function AppLayout() {
               <span className="text-headline-sm font-semibold tracking-tight text-on-surface">
                 灵码·LingMa
               </span>
-              <span className="chip-secondary mt-0.5">v0.2 本地版</span>
+              <span className="text-[10px] uppercase tracking-wider text-outline mt-0.5">
+                v0.2 本地版
+              </span>
             </div>
           </div>
 
@@ -89,7 +91,7 @@ export function AppLayout() {
           <nav className="flex flex-col gap-4 px-4 overflow-y-auto flex-1">
             {NAV_GROUPS.map((group) => (
               <div key={group.label} className="flex flex-col gap-1">
-                <span className="px-3 text-label-sm uppercase tracking-wider text-outline">
+                <span className="px-3 text-[10px] uppercase tracking-wider text-outline font-semibold">
                   {group.label}
                 </span>
                 {group.items.map((item) => (

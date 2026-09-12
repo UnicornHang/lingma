@@ -7,35 +7,35 @@ export default {
   theme: {
     extend: {
       colors: {
-        // === Primary Spectrum: Teal & Emerald (lighter) ===
+        // === Primary Spectrum: Deep Emerald (Figma mockup) ===
         primary: {
-          DEFAULT: '#0d9488',         // Standard teal
-          hover: '#14b8a6',
-          active: '#0f766e',
-          container: '#ccfbf1',       // Soft teal backdrop
-          'on-container': '#134e4a',
-          fixed: '#f0fdfa',           // Very soft mint (was teal-300, too vivid)
-          'fixed-dim': '#ccfbf1',
-          'on-fixed': '#042f2e',
+          DEFAULT: '#047857',         // Deep emerald-700
+          hover: '#065f46',
+          active: '#064e3b',
+          container: '#d1fae5',       // Soft mint backdrop
+          'on-container': '#064e3b',
+          fixed: '#f0fdf4',
+          'fixed-dim': '#14b8a6',
+          'on-fixed': '#052e16',
           // 兼容别名
-          'vibrant': '#10b981',       // Emerald accent
+          'vibrant': '#10b981',
         },
-        // === Secondary Spectrum: Sky (lighter) ===
+        // === Secondary Spectrum: Sky ===
         secondary: {
-          DEFAULT: '#0ea5e9',         // Sky blue
+          DEFAULT: '#0ea5e9',
           hover: '#38bdf8',
-          container: '#e0f2fe',       // Soft sky backdrop
+          container: '#e0f2fe',
           'on-container': '#075985',
           fixed: '#bae6fd',
           'fixed-dim': '#7dd3fc',
           'on-fixed-variant': '#0369a1',
         },
-        // === Tertiary Spectrum: Green (lighter) ===
+        // === Tertiary Spectrum: Amber (Figma 已完结色) ===
         tertiary: {
-          DEFAULT: '#10b981',         // Fresh emerald
-          hover: '#34d399',
-          container: '#d1fae5',
-          'on-container': '#065f46',
+          DEFAULT: '#f59e0b',         // Amber-500
+          hover: '#d97706',
+          container: '#fef3c7',       // 浅米黄 backdrop
+          'on-container': '#78350f',
         },
         // === 语义色 ===
         error: {
@@ -43,19 +43,33 @@ export default {
           container: '#fee2e2',
           'on-container': '#7f1d1d',
         },
-        // === Surface 色阶 (Fresh Emerald) ===
+        // === Surface 色阶 (cream + mint, 仿 Figma) ===
         surface: {
           DEFAULT: '#ffffff',
-          dim: '#f0fdf4',             // mint surface-dim
+          dim: '#fefce8',             // 米色 dim
           bright: '#ffffff',
           lowest: '#ffffff',
           low: '#f0fdf4',             // mint surface-container-low
-          container: '#e6f7ef',       // mint surface-container
-          high: '#dcfce7',            // mint surface-container-high
-          highest: '#bbf7d0',         // mint surface-container-highest
+          container: '#ecfdf5',
+          // Material 3 container aliases (so bg-surface-container-lowest 等也能工作)
+          'container-lowest': '#ffffff',
+          'container-low':    '#f0fdf4',
+          'container-high':   '#d1fae5',
+          'container-highest':'#a7f3d0',
+          high: '#d1fae5',
+          highest: '#a7f3d0',
         },
-        // === Background ===
-        background: '#f8fafc',        // Crisp daylight slate-white
+        // === Background (深 emerald 主背景, Figma) ===
+        background: '#064e3b',
+        // === Banner beige (Figma 作品卡横幅) ===
+        banner: {
+          beige: '#fef3c7',
+          beige2: '#fde68a',
+          writing: '#047857',
+          finished: '#f59e0b',
+          draft: '#94a3b8',
+          archived: '#b91c1c',
+        },
         // === On-Surface 文字色阶（提深） ===
         'on-surface': '#0f172a',          // Heading obsidian
         'on-surface-variant': '#334155',  // Body slate-700 (was slate-600)
