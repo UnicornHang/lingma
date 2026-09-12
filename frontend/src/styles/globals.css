@@ -3,56 +3,65 @@
 @tailwind utilities;
 
 /* ============================================================
-   LingMa Novel Studio · Material 3 Design Tokens (CSS vars)
+   LingMa Novel Studio · Fresh Emerald Studio (v0.2 翡翠版)
    ============================================================ */
 :root {
-  /* M3 Primary */
-  --color-primary: #5B5FE9;
-  --color-primary-hover: #4A4ED8;
-  --color-primary-container: #E0E1FF;
-  --color-on-primary-container: #14199C;
-  --color-primary-fixed: #DDE0FF;
-  --color-primary-fixed-dim: #BAC2FF;
-  --color-on-primary: #FFFFFF;
-  --color-on-primary-fixed: #0B156F;
+  /* Primary Spectrum: Teal & Emerald (lighter) */
+  --color-primary: #0d9488;
+  --color-primary-hover: #14b8a6;
+  --color-primary-active: #0f766e;
+  --color-primary-container: #ccfbf1;
+  --color-on-primary-container: #134e4a;
+  --color-primary-fixed: #f0fdfa;
+  --color-primary-fixed-dim: #14b8a6;
+  --color-on-primary: #ffffff;
+  --color-on-primary-fixed: #042f2e;
 
-  /* M3 Secondary */
-  --color-secondary: #5A5C72;
-  --color-secondary-container: #E0E1F9;
-  --color-on-secondary-container: #171A2C;
-  --color-on-secondary-fixed-variant: #474A5E;
+  /* Primary Vibrant: Emerald accent (lighter) */
+  --color-primary-vibrant: #10b981;
+  --color-primary-vibrant-hover: #34d399;
 
-  /* M3 Tertiary */
-  --color-tertiary: #00662B;
-  --color-tertiary-container: #9AF6B6;
-  --color-on-tertiary-container: #002009;
+  /* Secondary Spectrum: Sky (lighter) */
+  --color-secondary: #0ea5e9;
+  --color-secondary-hover: #38bdf8;
+  --color-secondary-container: #e0f2fe;
+  --color-on-secondary-container: #075985;
+
+  /* Tertiary Spectrum: Green (lighter) */
+  --color-tertiary: #10b981;
+  --color-tertiary-hover: #34d399;
+  --color-tertiary-container: #d1fae5;
+  --color-on-tertiary-container: #065f46;
 
   /* Semantic */
-  --color-error: #BA1A1A;
-  --color-error-container: #FFDAD6;
-  --color-on-error-container: #410002;
+  --color-error: #ef4444;
+  --color-error-container: #fee2e2;
+  --color-on-error-container: #7f1d1d;
 
-  /* M3 Surface tiers */
-  --color-surface: #FCFBFF;
-  --color-surface-dim: #DCD9E2;
-  --color-surface-bright: #FCFBFF;
-  --color-surface-container-lowest: #FFFFFF;
-  --color-surface-container-low: #F2F3FF;
-  --color-surface-container: #EFEDF7;
-  --color-surface-container-high: #E9E7EF;
-  --color-surface-container-highest: #E3E2E8;
+  /* Surface tiers (mint tints) */
+  --color-surface: #ffffff;
+  --color-surface-dim: #f0fdf4;
+  --color-surface-bright: #ffffff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f0fdf4;
+  --color-surface-container: #ecfdf5;
+  --color-surface-container-high: #d1fae5;
+  --color-surface-container-highest: #a7f3d0;
 
-  /* M3 On-Surface text */
-  --color-on-surface: #1C1B1E;
-  --color-on-surface-variant: #46464F;
-  --color-on-surface-low: #6B6B73;
+  /* Background (Crisp daylight slate-white) */
+  --color-background: #f8fafc;
 
-  /* Outline */
-  --color-outline: #777680;
-  --color-outline-variant: #C7C5D0;
+  /* On-Surface text (darker for better contrast) */
+  --color-on-surface: #0f172a;
+  --color-on-surface-variant: #334155;
+  --color-on-surface-low: #64748b;
+
+  /* Outline (stronger) */
+  --color-outline: #64748b;
+  --color-outline-variant: #cbd5e1;
 
   /* Legacy aliases (过渡兼容) */
-  --color-bg: var(--color-surface);
+  --color-bg: var(--color-background);
   --color-bg-secondary: var(--color-surface-container-low);
   --color-text-primary: var(--color-on-surface);
   --color-text-secondary: var(--color-on-surface-variant);
@@ -75,8 +84,8 @@ html, body, #root {
 }
 
 body {
-  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  background: var(--color-surface);
+  font-family: 'Plus Jakarta Sans', 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--color-background);
   color: var(--color-on-surface);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -90,13 +99,13 @@ body {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(31, 35, 48, 0.18);
+  background: rgba(13, 148, 136, 0.18);
   border-radius: 9999px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(31, 35, 48, 0.30); }
+::-webkit-scrollbar-thumb:hover { background: rgba(13, 148, 136, 0.30); }
 
 /* ============================================================
-   Focus visible
+   Focus visible (Emerald)
    ============================================================ */
 :focus-visible {
   outline: 2px solid var(--color-primary-fixed-dim);
@@ -104,16 +113,27 @@ body {
   border-radius: 6px;
 }
 
+/* Inputs / textareas — explicit focus ring (Emerald glow) */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.18);
+}
+
+/* antd override — Select / Input active border already set in main.tsx */
+
 /* ============================================================
-   Typography helpers (对标 Figma v0.2 字号阶梯)
+   Typography helpers (对标 Fresh Emerald Studio v0.2)
    ============================================================ */
 .font-display     { font-weight: 700; }
 .font-headline-lg { font-weight: 600; }
 .font-headline-md { font-weight: 600; }
 .font-headline-sm { font-weight: 600; }
-.font-label-lg    { font-weight: 500; }
-.font-label-md    { font-weight: 500; letter-spacing: 0.5px; }
-.font-label-sm    { font-weight: 500; letter-spacing: 0.5px; }
+.font-label-lg    { font-weight: 600; }
+.font-label-md    { font-weight: 600; letter-spacing: 0.02em; }
+.font-label-sm    { font-weight: 500; letter-spacing: 0.03em; }
 .font-code-md     { font-family: 'JetBrains Mono', Consolas, monospace; font-weight: 500; }
 .font-code-sm     { font-family: 'JetBrains Mono', Consolas, monospace; font-weight: 500; }
 
@@ -124,24 +144,25 @@ body {
   display: flex;
   height: 100vh;
   width: 100vw;
-  background: var(--color-surface);
+  background: var(--color-background);
   overflow: hidden;
 }
 .app-sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
-  background: var(--color-surface-container-low);
-  border-right: 1px solid rgba(199, 197, 208, 0.3);
+  background: #ffffff;
+  border-right: 1px solid rgba(187, 247, 208, 0.4);
   display: flex;
   flex-direction: column;
   height: 100vh;
+  box-shadow: 2px 0 12px rgba(13, 148, 136, 0.03);
 }
 .app-header {
   height: var(--header-height);
-  background: rgba(252, 251, 255, 0.9);
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(199, 197, 208, 0.3);
+  border-bottom: 1px solid rgba(187, 247, 208, 0.5);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -154,27 +175,27 @@ body {
   flex: 1;
   height: calc(100vh - var(--header-height));
   overflow: auto;
-  background: var(--color-surface-container-low);
+  background: rgba(240, 253, 244, 0.5);
 }
 
 /* ============================================================
    Component utilities
    ============================================================ */
-/* Card surface (L1 elevation) */
+/* Card surface (L1 elevation) - Teal-infused hairline */
 .surface-card {
-  background: var(--color-surface-container-lowest);
-  border: 1px solid rgba(199, 197, 208, 0.4);
+  background: #ffffff;
+  border: 1px solid var(--color-outline-variant);
   border-radius: 12px;
-  box-shadow: 0 1px 3px 0 rgba(31, 35, 48, 0.08), 0 1px 2px 0 rgba(31, 35, 48, 0.06);
+  box-shadow: 0 1px 3px 0 rgba(13, 148, 136, 0.04), 0 1px 2px 0 rgba(15, 23, 42, 0.03);
 }
 .surface-card-active {
-  background: var(--color-surface-container-lowest);
+  background: #ffffff;
   border: 2px solid var(--color-primary);
   border-radius: 12px;
-  box-shadow: 0 4px 12px 0 rgba(31, 35, 48, 0.10), 0 2px 6px 0 rgba(31, 35, 48, 0.06);
+  box-shadow: 0 10px 25px -5px rgba(13, 148, 136, 0.08), 0 8px 10px -6px rgba(2, 132, 199, 0.04);
 }
 
-/* Chip / Tag */
+/* Chip / Tag — Plotline / Entity */
 .chip-primary {
   display: inline-flex;
   align-items: center;
@@ -191,8 +212,8 @@ body {
   align-items: center;
   padding: 2px 8px;
   border-radius: 9999px;
-  background: rgba(154, 246, 182, 0.30);
-  color: var(--color-tertiary);
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--color-on-tertiary-container);
   font-size: 11px;
   font-weight: 500;
   font-family: 'JetBrains Mono', Consolas, monospace;
@@ -203,13 +224,49 @@ body {
   padding: 2px 8px;
   border-radius: 9999px;
   background: var(--color-secondary-container);
-  color: var(--color-on-secondary-fixed-variant);
+  color: var(--color-on-secondary-container);
   font-size: 11px;
   font-weight: 500;
   font-family: 'JetBrains Mono', Consolas, monospace;
 }
+.chip-error {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--color-error-container);
+  color: var(--color-on-error-container);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+/* Plotline/Node chip — emerald tone */
+.chip-plotline {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  background: var(--color-surface-container-low);
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  font-size: 11px;
+  font-weight: 500;
+}
+/* Agent Identifier Badge — sky tone */
+.chip-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+  font-size: 11px;
+  font-weight: 500;
+}
 
-/* Sidebar nav item */
+/* Sidebar nav item — Emerald active state */
 .nav-item {
   display: flex;
   align-items: center;
@@ -224,17 +281,17 @@ body {
   cursor: pointer;
 }
 .nav-item:hover {
-  background: var(--color-surface-container-high);
+  background: var(--color-surface-container-low);
   color: var(--color-on-surface);
 }
 .nav-item-active {
-  background: var(--color-primary-container);
-  color: var(--color-on-primary-container);
+  background: #059669;
+  color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 1px 3px 0 rgba(31, 35, 48, 0.06);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
 }
 
-/* Toggle (Material switch) */
+/* Toggle (Material switch — Emerald variant) */
 .toggle {
   position: relative;
   width: 44px;
@@ -244,7 +301,7 @@ body {
   transition: background-color 160ms ease;
 }
 .toggle-on  { background: var(--color-primary); }
-.toggle-off { background: rgba(119, 118, 128, 0.4); }
+.toggle-off { background: rgba(148, 163, 184, 0.4); }
 .toggle-thumb {
   position: absolute;
   top: 2px;
@@ -273,12 +330,12 @@ body {
   white-space: nowrap;
 }
 
-/* Dot pulse */
+/* Dot pulse — Emerald */
 .dot-pulse {
   width: 8px;
   height: 8px;
   border-radius: 9999px;
-  background: var(--color-tertiary);
+  background: #10b981;
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 @keyframes pulse {
@@ -286,7 +343,7 @@ body {
   50%      { opacity: 0.4; }
 }
 
-/* Range input (M3) */
+/* Range input (Emerald) */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -303,7 +360,7 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 9999px;
   background: var(--color-primary);
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(91, 95, 233, 0.35);
+  box-shadow: 0 1px 4px rgba(13, 148, 136, 0.35);
 }
 
 /* Inline code */
@@ -311,7 +368,7 @@ code {
   font-family: 'JetBrains Mono', Consolas, monospace;
   font-size: 0.9em;
   color: var(--color-primary);
-  background: var(--color-surface-container);
+  background: var(--color-surface-container-low);
   padding: 1px 6px;
   border-radius: 4px;
 }

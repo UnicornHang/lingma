@@ -133,7 +133,7 @@ function LLMSettings() {
           <ProviderActions />
         </div>
         <div className="surface-card p-6 flex flex-col gap-4">
-          <ProviderCardHeader color="#00662B" letter="L" name="Ollama (本地)" status="down" />
+          <ProviderCardHeader color="#059669" letter="L" name="Ollama (本地)" status="down" />
           <ProviderBaseUrl value="http://127.0.0.1:11434" />
           <p className="px-3 py-2 rounded-lg bg-tertiary-container/20 text-body-sm text-on-surface-variant">
             已下载模型：qwen2.5:14b · llama3.1:8b · nomic-embed-text

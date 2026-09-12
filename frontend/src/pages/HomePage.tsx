@@ -9,7 +9,7 @@ export default function HomePage() {
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            'radial-gradient(circle at 50% 45%, rgba(91,95,233,0.08), transparent 55%)',
+            'radial-gradient(circle at 50% 45%, rgba(5,150,105,0.10), transparent 55%)',
         }}
       />
 
@@ -17,7 +17,7 @@ export default function HomePage() {
         {/* Logo with glow */}
         <div className="relative">
           <div className="absolute inset-0 rounded-3xl bg-primary/20 blur-2xl" />
-          <div className="relative h-24 w-24 rounded-3xl bg-primary flex items-center justify-center shadow-[0_8px_32px_rgba(91,95,233,0.35)]">
+          <div className="relative h-24 w-24 rounded-3xl bg-primary flex items-center justify-center shadow-[0_8px_32px_rgba(5,150,105,0.35)]">
             <BookOpen size={48} className="text-white" strokeWidth={1.5} />
           </div>
         </div>
@@ -39,7 +39,7 @@ export default function HomePage() {
         <div className="flex items-center gap-4 mt-10">
           <Link
             to="/works"
-            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg text-label-md font-medium shadow-[0_4px_12px_rgba(91,95,233,0.35)] hover:bg-primary-hover transition-all"
+            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg text-label-md font-medium shadow-[0_4px_12px_rgba(5,150,105,0.35)] hover:bg-primary-hover transition-all"
           >
             <span>进入作品库</span>
             <ArrowRight size={20} />

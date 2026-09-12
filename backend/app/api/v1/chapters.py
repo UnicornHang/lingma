@@ -5,11 +5,13 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_db
+from app.models.task import GenerationTask, TaskStatus, TaskType
 from app.schemas.chapter import (
     ChapterCreate,
     ChapterListResponse,
     ChapterRead,
     ChapterUpdate,
+    GenerateChapterRequest,
 )
 from app.services import chapter_service
 from app.services import work_service
@@ -97,3 +99,43 @@ async def delete_chapter_endpoint(
 ) -> None:
     await chapter_service.delete_chapter(db, chapter_id)
     await db.commit()
+
+
+@router.post(
+    "/{chapter_id}/generate",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="异步生成/续写章节",
+    description=(
+        "创建异步生成任务并返回 task_id 与 WS 地址。"
+        "前端需在收到响应后连接 WS：ws://<host>/ws/generation/{task_id}，"
+        "发送 {type: 'start', messages: [...], model: '...'} 启动流式输出。"
+    ),
+)
+async def generate_chapter_endpoint(
+    chapter_id: UUID,
+    payload: GenerateChapterRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    chapter = await chapter_service.get_chapter(db, chapter_id)
+
+    params: dict = {}
+    if payload:
+        params = payload.model_dump(exclude_none=True)
+
+    task = GenerationTask(
+        work_id=chapter.work_id,
+        chapter_id=chapter_id,
+        task_type=TaskType.CHAPTER_CONTINUE,
+        status=TaskStatus.PENDING,
+        params=params,
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+
+    return {
+        "task_id": str(task.id),
+        "ws_url": f"/ws/generation/{task.id}",
+        "status": task.status.value,
+        "chapter_id": str(chapter_id),
+    }

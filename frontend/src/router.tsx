@@ -35,13 +35,16 @@ export function AppRouter() {
           {/* 创作空间 */}
           <Route path="/works" element={<WorksListPage />} />
           <Route path="/works/:id" element={<WorkDetailPage />} />
+          <Route path="/works/:id/outline" element={<OutlinePage />} />
+          <Route path="/works/:id/characters" element={<CharactersPage />} />
+          <Route path="/works/:id/world" element={<WorldBiblePage />} />
           <Route path="/editor" element={<ChapterEditorPage />} />
           <Route path="/editor/:chapterId" element={<ChapterEditorPage />} />
 
-          {/* 作品设定 */}
-          <Route path="/outline" element={<OutlinePage />} />
-          <Route path="/characters" element={<CharactersPage />} />
-          <Route path="/world" element={<WorldBiblePage />} />
+          {/* 作品设定 — 顶级旧路径自动重定向到 WorksListPage */}
+          <Route path="/outline"    element={<Navigate to="/works" replace />} />
+          <Route path="/characters" element={<Navigate to="/works" replace />} />
+          <Route path="/world"      element={<Navigate to="/works" replace />} />
 
           {/* 系统设置 */}
           <Route path="/settings" element={<Navigate to="/settings/general" replace />} />

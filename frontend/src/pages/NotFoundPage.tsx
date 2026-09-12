@@ -23,7 +23,7 @@ export default function NotFoundPage() {
         <div className="flex items-center gap-3 mt-6">
           <Link
             to="/"
-            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg text-label-md font-medium shadow-[0_4px_12px_rgba(91,95,233,0.35)] hover:bg-primary-hover transition-all"
+            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg text-label-md font-medium shadow-[0_4px_12px_rgba(5,150,105,0.35)] hover:bg-primary-hover transition-all"
           >
             <ArrowLeft size={18} />
             <span>返回首页</span>
