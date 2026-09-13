@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { App, Button, Select, Modal, Spin, Space } from 'antd';
+import { App, Button, Select, Modal, Spin, Space, Tag } from 'antd';
 import {
   ChevronDown,
   ChevronRight,
@@ -17,6 +17,7 @@ import {
   X,
   History,
   GitBranch,
+  RefreshCw,
 } from 'lucide-react';
 
 import {
@@ -1108,6 +1109,43 @@ export default function ChapterEditorPage() {
                   </li>
                 ))}
               </ul>
+            )}
+
+            {/* [P3.3] 自动改写循环报告 —— 仅在 done 事件有数据时显示 */}
+            {generation.autoRewriteReport && generation.autoRewriteReport.executed && (
+              <details className="mt-2 surface-card p-3" data-testid="auto-rewrite-report">
+                <summary className="cursor-pointer flex items-center gap-2 text-body-sm text-on-surface-variant">
+                  <RefreshCw size={14} className="text-primary" />
+                  <span>自动改写 {generation.autoRewriteReport.iterations.length} 轮</span>
+                  <Tag color={generation.autoRewriteReport.improved ? 'success' : 'warning'}>
+                    {generation.autoRewriteReport.improved
+                      ? `达标 ${(generation.autoRewriteReport.final_overall ?? 0).toFixed(2)}`
+                      : `未达 ${(generation.autoRewriteReport.final_overall ?? 0).toFixed(2)}`}
+                  </Tag>
+                </summary>
+                <ul className="mt-2 flex flex-col gap-1 text-body-xs">
+                  {generation.autoRewriteReport.iterations.map((it) => (
+                    <li key={it.index} className="flex items-center gap-2">
+                      <Tag
+                        color={
+                          it.outcome === 'success'
+                            ? 'success'
+                            : it.outcome === 'below_threshold'
+                              ? 'processing'
+                              : 'error'
+                        }
+                      >
+                        #{it.index} {it.outcome}
+                      </Tag>
+                      <span className="text-on-surface-variant">
+                        {it.pre_overall.toFixed(2)}
+                        {it.post_overall !== undefined && ` → ${it.post_overall.toFixed(2)}`}
+                        {it.version_no !== undefined && ` · v${it.version_no}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </div>
 

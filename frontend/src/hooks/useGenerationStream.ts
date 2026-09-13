@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWebSocket } from './useWebSocket';
-import type { AutoPolishReport, CriticSummary } from '@/api/chapters';
+import type { AutoPolishReport, AutoRewriteReport, CriticSummary } from '@/api/chapters';
 
 /** 与 docs/API.md 一致的 WS 服务端推送类型 */
 export type GenerationServerEvent =
@@ -18,6 +18,8 @@ export type GenerationServerEvent =
       auto_polish_report?: AutoPolishReport | null;
       /** [P2] 自动 critic 评审报告(若开启) */
       critic?: CriticSummary | null;
+      /** [P3.3] 自动改写循环报告(若触发) */
+      auto_rewrite_report?: AutoRewriteReport | null;
     }
   | { type: 'error'; task_id?: string; stream_id?: string; error: string }
   | { type: 'cancelled'; task_id: string }
@@ -87,6 +89,8 @@ interface UseGenerationStreamReturn {
   autoPolishReport: AutoPolishReport | null;
   /** [P2] 自动 critic 评审报告(done 时填充) */
   criticReport: CriticSummary | null;
+  /** [P3.3] 自动改写循环报告(done 时填充,可能 null) */
+  autoRewriteReport: AutoRewriteReport | null;
   /**
    * 注册「待发 start 意图」。Hook 内部 effect 会在 WS 进入 OPEN 时自动发送。
    * 多次调用以最新一次为准。StrictMode 双连接场景下安全:
@@ -137,6 +141,8 @@ export function useGenerationStream(
   const [autoPolishReport, setAutoPolishReport] = useState<AutoPolishReport | null>(null);
   // [P2] 自动 critic 评审报告(done 时填充)
   const [criticReport, setCriticReport] = useState<CriticSummary | null>(null);
+  // [P3.3] 自动改写循环报告(done 时填充,可能 null)
+  const [autoRewriteReport, setAutoRewriteReport] = useState<AutoRewriteReport | null>(null);
 
   // 防止卸载后仍然 setState
   const mountedRef = useRef(true);
@@ -206,6 +212,7 @@ export function useGenerationStream(
           setStatus('done');
           setAutoPolishReport(lastMessage.auto_polish_report ?? null);
           setCriticReport(lastMessage.critic ?? null);
+          setAutoRewriteReport(lastMessage.auto_rewrite_report ?? null);
         });
         break;
       case 'error':
@@ -314,5 +321,5 @@ export function useGenerationStream(
     optsRef.current = null;
   }, []);
 
-  return { status, content, error, model, autoPolishReport, criticReport, start, cancel, reset };
+  return { status, content, error, model, autoPolishReport, criticReport, autoRewriteReport, start, cancel, reset };
 }

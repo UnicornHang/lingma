@@ -314,6 +314,37 @@ export interface CriticEvaluationListItem {
   model_used: string;
 }
 
+// ============ [P3.3] 自动改写循环报告(WS done 事件) ============
+
+export interface AutoRewriteIteration {
+  index: number;
+  outcome:
+    | 'success'
+    | 'below_threshold'
+    | 'no_change'
+    | 'error'
+    | 'persist_error'
+    | 're_evaluate_error';
+  pre_overall: number;
+  post_overall?: number;
+  version_no?: number;
+  elapsed_ms?: number;
+  error?: string;
+}
+
+export interface AutoRewriteReport {
+  enabled: boolean;
+  executed: boolean;
+  skipped_reason?: string | null;
+  iterations: AutoRewriteIteration[];
+  initial_overall?: number;
+  final_overall?: number;
+  threshold: number;
+  max_retries: number;
+  improved?: boolean;
+  error?: string;
+}
+
 // ============ SSE 流式去味事件 payload ============
 
 export interface PolishStreamDetectedPayload {
