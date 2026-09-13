@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -123,3 +124,34 @@ class CriticSummary(BaseModel):
     consensus_issues: list[str] = Field(default_factory=list, max_length=10)
     model_used: str = Field(default="", max_length=64)
     evaluation_id: str | None = Field(default=None, description="critic_evaluations.id")
+
+
+# ============== [P3.2] 章节评审历史(趋势图用) ==============
+
+
+class CriticEvaluationListItem(BaseModel):
+    """章节评审历史列表项 —— P3.2 趋势图后端响应。
+
+    与 CriticSummary 的差异:
+    - 增 version_no / created_at / id: 趋势图 X 轴 = 版本号,tooltip 显示时间
+    - 不含 consensus_issues / persona_scores: 趋势图只关心 4 子分 + overall 曲线,
+      详情由前端另开 Modal 显示(留 P3.3+)
+
+    设计要点:
+    - extra='forbid': 与 CriticSummary 一致,字段稳定 → 不破坏 OpenAPI client
+    - from_attributes=True: 允许直接 model_validate(CriticEvaluation ORM 对象)
+    - 评分历史是「评审当时的快照」,与当前 chapter.version 内容不一定匹配
+      (前端 disclaimer 必须展示)
+    """
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    id: UUID
+    version_no: int = Field(..., ge=1, description="评审当时的 chapter.version")
+    overall: float = Field(..., ge=0.0, le=1.0)
+    consistency: float = Field(..., ge=0.0, le=1.0)
+    pacing: float = Field(..., ge=0.0, le=1.0)
+    prose: float = Field(..., ge=0.0, le=1.0)
+    engagement: float = Field(..., ge=0.0, le=1.0)
+    created_at: datetime
+    model_used: str = Field(default="", max_length=64)

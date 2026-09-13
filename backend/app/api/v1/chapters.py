@@ -36,6 +36,7 @@ from app.schemas.chapter import (
     PolishChapterResponse,
     PolishRewriteRead,
 )
+from app.schemas.critic import CriticEvaluationListItem
 from app.services import chapter_service
 from app.services import work_service
 from app.services.ai_pattern_detector import summarize as summarize_findings
@@ -197,6 +198,40 @@ async def list_chapter_versions_endpoint(
         total=len(versions),
         items=[ChapterVersionRead.model_validate(v) for v in versions],
     )
+
+
+# ==================== [P3.2] Critic 评分趋势端点 ====================
+
+
+@router.get(
+    "/{chapter_id}/evaluations",
+    response_model=list[CriticEvaluationListItem],
+    summary="获取章节的 Critic 评审历史(按时间正序)",
+    description=(
+        "返回该章节的所有 critic_evaluations 记录,按 created_at ASC 排列。"
+        "前端用于绘制评分趋势图(echarts)。\n\n"
+        "**数据语义**: 每条记录是评审当时的快照,与当前 chapter.version 内容"
+        "不一定匹配——前端必须显式 disclaimer。\n\n"
+        "**空数据**: 章节无评审记录时返 200 + 空列表(不返 404)。"
+    ),
+)
+async def list_chapter_evaluations_endpoint(
+    chapter_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> list[CriticEvaluationListItem]:
+    """章节评审历史 —— P3.2 critic 趋势图用。"""
+    # 校验章节存在(无评审时仍 200,但章节不存在返 404)
+    await chapter_service.get_chapter(db, chapter_id)
+
+    from app.models.critic_evaluation import CriticEvaluation
+
+    r = await db.execute(
+        select(CriticEvaluation)
+        .where(CriticEvaluation.chapter_id == chapter_id)
+        .order_by(CriticEvaluation.created_at.asc())
+    )
+    rows = list(r.scalars().all())
+    return [CriticEvaluationListItem.model_validate(row) for row in rows]
 
 
 # ==================== Editor Agent: AI 痕迹检测 / 去味 ====================
