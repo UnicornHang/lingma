@@ -301,7 +301,13 @@ async def _handle_start(
                     messages=messages,
                     model=data.get("model", cfg.model if cfg else model_name),
                     temperature=float(data.get("temperature", 0.85)),
-                    max_tokens=int(data.get("max_tokens", 4096)),
+                    # [P2 修复] max_tokens 跟随 target_word_count 走,避免中文字数估算不足
+                    # - 中文字符 ≈ 1.5 tokens/字,加 thinking block 余量约 × 2.0
+                    # - max(WS 传入值, target_word_count × 2.0) 防止前端硬编码过小
+                    max_tokens=_resolve_max_tokens(
+                        client_max_tokens=data.get("max_tokens"),
+                        target_word_count=target_word_count,
+                    ),
                     stream=True,
                 )
                 prompt_used = prompt_text
@@ -867,3 +873,49 @@ async def _cancel_task(task_id: str) -> None:
             t.status = TaskStatus.CANCELLED
             t.completed_at = datetime.now(timezone.utc)
             await db.commit()
+
+
+# ==================== [P2 修复] max_tokens 自动跟随 target_word_count ====================
+
+
+# 中文字符 ≈ 1.5 tokens/字,推理 LLM 还会消耗 think block;
+# 经验系数 2.0 兼顾二者,确保 LLM 有足够预算输出 target_word_count 字正文。
+MAX_TOKENS_PER_TARGET_WORD = 2.0
+MAX_TOKENS_MIN_FLOOR = 1500
+MAX_TOKENS_HARD_CEIL = 20_000  # 防止异常输入撑爆 token 上限
+
+
+def _resolve_max_tokens(
+    client_max_tokens,
+    *,
+    target_word_count: int | None,
+) -> int:
+    """根据 target_word_count 决定 LLM 调用 max_tokens。
+
+    优先级:
+    1. target_word_count 提供时 → 至少 target × 2.0,与客户端传入值取大
+    2. target_word_count 缺失 → 用客户端传入值(向后兼容)
+    3. 二者皆缺 → 4096 默认
+
+    Examples:
+        target=800, client=1500 → max(1500, 1600) = 1600
+        target=1500, client=1500 → max(1500, 3000) = 3000
+        target=None, client=4096 → 4096
+    """
+    derived: int | None = None
+    if target_word_count and target_word_count > 0:
+        derived = int(target_word_count * MAX_TOKENS_PER_TARGET_WORD)
+        derived = max(derived, MAX_TOKENS_MIN_FLOOR)
+
+    if client_max_tokens is not None:
+        try:
+            client_val = int(client_max_tokens)
+        except (TypeError, ValueError):
+            client_val = 0
+        chosen = derived if derived is not None else client_val
+        return min(max(chosen, client_val), MAX_TOKENS_HARD_CEIL)
+
+    # 客户端未传
+    if derived is not None:
+        return min(derived, MAX_TOKENS_HARD_CEIL)
+    return 4096

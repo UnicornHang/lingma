@@ -185,6 +185,28 @@ export default function ChapterEditorPage() {
   // 3) WS 流式生成
   const generation = useGenerationStream(taskId);
 
+  // ==================== [P3] 大纲树数据 (提前到 handleAiContinue 之前,
+  // 因为 handleAiContinue 要用 currentOutlineTarget 决定 AI 续写目标字数 / max_tokens) ====================
+  const outlineQuery = useQuery({
+    queryKey: ['outline-tree', chapter?.work_id],
+    queryFn: () => outlineApi.tree(chapter!.work_id),
+    enabled: !!chapter?.work_id,
+  });
+  const flatChapters = useMemo(
+    () => flattenChapters(outlineQuery.data?.nodes ?? []),
+    [outlineQuery.data],
+  );
+
+  // [P2 修复] 当前大纲节点的目标字数(>0) — 用于决定 AI 续写目标字数 + 预算 tokens
+  // 修复前:前端硬编码 800 + max_tokens=1500,实际生成仅 ~888 字(用户报告)
+  // 修复后:从 outline tree 读取,缺省 1500,与后端 GenerateChapterRequest 默认对齐
+  const FALLBACK_TARGET_WORD_COUNT = 1500;
+  const currentOutlineTarget = useMemo(() => {
+    const node = flatChapters.find((c) => c.id === outlineNodeId);
+    const t = node?.target_word_count;
+    return t && t > 0 ? t : FALLBACK_TARGET_WORD_COUNT;
+  }, [flatChapters, outlineNodeId]);
+
   const handleAiContinue = useCallback(async () => {
     if (!chapterId) {
       message.warning('缺少章节 ID，无法续写');
@@ -204,7 +226,7 @@ export default function ChapterEditorPage() {
         chapter_id: chapterId,
         mode: 'continue',
         continue_from_chars: 1500,
-        target_word_count: 800,
+        target_word_count: currentOutlineTarget,
         outline_node_id: outlineNodeId ?? undefined,
         // [P2] 显式打开自动去味 + 自动 critic 开关(后端默认也是 true,
         // 前端显式声明以便 TypeScript 编译期可见、后续可一键关闭)
@@ -217,7 +239,7 @@ export default function ChapterEditorPage() {
       message.error(msg);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapterId, generation.status, dirty, persist, outlineNodeId]);
+  }, [chapterId, generation.status, dirty, persist, outlineNodeId, currentOutlineTarget]);
 
   // 注册「待发 start 意图」。useGenerationStream 内部 effect 会在 WS 进入
   // OPEN 时自动发送（StrictMode-safe：即使 WS 被 cleanup，新 WS 进入 OPEN 也会再发一次）
@@ -228,7 +250,9 @@ export default function ChapterEditorPage() {
       {
         mode: 'continue',
         continue_from_chars: 1500,
-        max_tokens: 1500,
+        // [P2 修复] tokens 预算与目标字数对齐:目标 × 2(与后端 _resolve_max_tokens 一致)
+        // 修复前硬编码 1500 → 用户报告"目标 1500 字但实际 888 字"
+        max_tokens: currentOutlineTarget * 2,
         temperature: 0.85,
         // [P2] 与 chaptersApi.generate 同步:显式打开自动去味 + 自动 critic
         auto_polish: true,
@@ -237,6 +261,7 @@ export default function ChapterEditorPage() {
       }
     );
     // 仅依赖 taskId —— status 变化不应再触发 start(避免重复)
+    // currentOutlineTarget 由闭包捕获,新 taskId 会触发新的 effect 重新读取最新值
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
@@ -561,16 +586,7 @@ export default function ChapterEditorPage() {
   const wordCount = useMemo(() => plainText.length, [plainText]);
   const isStreaming = generation.status === 'streaming' || generation.status === 'connecting' || generation.status === 'ready';
 
-  // ==================== [P3] 大纲树数据 ====================
-  const outlineQuery = useQuery({
-    queryKey: ['outline-tree', chapter?.work_id],
-    queryFn: () => outlineApi.tree(chapter!.work_id),
-    enabled: !!chapter?.work_id,
-  });
-  const flatChapters = useMemo(
-    () => flattenChapters(outlineQuery.data?.nodes ?? []),
-    [outlineQuery.data],
-  );
+  // ==================== [P3] 大纲树 UI 状态 ====================
   const [expandedVolumes, setExpandedVolumes] = useState<Set<string>>(new Set());
 
   // 默认展开首个卷
@@ -768,7 +784,8 @@ export default function ChapterEditorPage() {
             <span className="chip-secondary">POV · 第一人称</span>
             <span className="font-code-sm text-on-surface-variant">
               {wordCount.toLocaleString()} 字
-              {chapter ? ` · 目标 ${(chapter.word_count + 800).toLocaleString()}` : ''}
+              {/* [P2 修复] 用大纲真实目标字数替代硬编码 chapter.word_count + 800 */}
+              {chapter ? ` · 目标 ${currentOutlineTarget.toLocaleString()}` : ''}
             </span>
           </div>
 
@@ -781,7 +798,11 @@ export default function ChapterEditorPage() {
               icon={<Bot size={16} />}
               onClick={handleAiContinue}
               disabled={isStreaming}
-              title={outlineNodeId ? `AI 续写 800 字(基于大纲节点 ${outlineNodeId.slice(0, 8)})` : 'AI 续写 800 字'}
+              title={
+                outlineNodeId
+                  ? `AI 续写 ${currentOutlineTarget.toLocaleString()} 字(基于大纲节点 ${outlineNodeId.slice(0, 8)})`
+                  : `AI 续写 ${currentOutlineTarget.toLocaleString()} 字`
+              }
             >
               续写
             </Button>

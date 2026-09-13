@@ -41,8 +41,8 @@ from app.schemas.critic import (
 async def test_critic_evaluation_model_can_be_created(db_session):
     """CriticEvaluation 落库:全字段写入 + 可 SELECT 出来"""
     work = Work(
-        title="测试", genre="fantasy", logline="", style_keywords=[],
-        target_audience=[], target_word_count=10000, notes="",
+        title="测试", genre=Genre.FANTASY, logline="", style_keywords=[],
+        target_audience=[], target_word_count=10000,
     )
     db_session.add(work)
     await db_session.flush()
@@ -207,8 +207,8 @@ async def test_version_snapshot_for_critic_matches_chapter_version(db_session):
     (实际 _handle_start 的版本快照在 writer 完成时取,这里只验证
     db_session.get(Chapter, id).version 字段可用)
     """
-    work = Work(title="t", genre="x", logline="", style_keywords=[],
-                target_audience=[], target_word_count=10000, notes="")
+    work = Work(title="t", genre=Genre.FANTASY, logline="", style_keywords=[],
+                target_audience=[], target_word_count=10000)
     db_session.add(work)
     await db_session.flush()
     chapter = Chapter(

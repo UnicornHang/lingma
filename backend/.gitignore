@@ -66,6 +66,9 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+# .env 备份(重置 APP_SECRET / 故障排查时生成,绝不入库)
+.env.bak.*
+.env.bak
 
 # 临时
 tmp/
