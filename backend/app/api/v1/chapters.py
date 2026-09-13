@@ -1,12 +1,24 @@
 """章节 CRUD API"""
+import asyncio
+import json
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.editor_agent import get_editor_agent
+from app.agents.editor_agent import (
+    PolishRewrite,
+    _extract_json_object,
+    get_editor_agent,
+)
 from app.deps import get_db
+from app.prompts.editor_prompts import (
+    build_editor_system_prompt,
+    build_editor_user_prompt,
+)
 from app.models.chapter import ChapterVersion
 from app.models.task import GenerationTask, TaskStatus, TaskType
 from app.schemas.chapter import (
@@ -26,7 +38,15 @@ from app.schemas.chapter import (
 )
 from app.services import chapter_service
 from app.services import work_service
-from app.services.llm_service import resolve_provider_config
+from app.services.ai_pattern_detector import summarize as summarize_findings
+from app.services.llm_service import (
+    LLMMessage,
+    LLMRequest,
+    get_llm_service,
+    resolve_provider_config,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -232,4 +252,170 @@ async def polish_chapter_endpoint(
         polished_text=result.polished_text,
         summary=result.summary,
         stats=result.stats,
+    )
+
+
+# ==================== 流式去味 (SSE) ====================
+#
+# 解决 `/polish` 在长章节 + 推理型 LLM 上 30s+ 必超时的问题。
+# 设计:
+# 1) 立即 emit `detected` 事件(findings + counts + stats) —— 用户毫秒级看到报告
+# 2) emit `llm_started` —— UI 切换到「正在改写」spinner
+# 3) emit `llm_delta` 多个 —— LLM 实时输出片段(让连接保活 + 显示进度)
+# 4) LLM 流完 → 解析 JSON → 应用 rewrites → emit `done`
+# 5) 任一阶段失败 → emit `error`(降级为原文 + findings)
+#
+# SSE 协议约定:
+#   event: <name>\n
+#   data: <json>\n\n
+# 前端用 fetch + ReadableStream 解析(见 frontend/src/api/chapters.ts)。
+
+
+
+def _sse(event: str, payload: dict) -> str:
+    """构造单条 SSE 消息。"""
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+@router.post(
+    "/polish/stream",
+    summary="章节去味(SSE 流式,带实时进度)",
+    description=(
+        "完整去味流程的流式版本。事件序列:detected → llm_started → llm_delta* → done。\n"
+        "前端用 EventSource 或 fetch+ReadableStream 接收。\n"
+        "对比 `/polish` 的优势:\n"
+        "- 检测结果立即返回(避免长章节 30s+ 超时)\n"
+        "- 流式 LLM delta 让用户看到进度\n"
+        "- LLM 失败时优雅降级返回 findings 报告"
+    ),
+)
+async def polish_chapter_stream_endpoint(
+    payload: PolishChapterRequest,
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    text = payload.text
+    style_keywords = payload.style_keywords
+    temperature = payload.temperature
+    # 流式版本放宽 max_tokens 上限(原本 4096 容易截断长章节改写)
+    max_tokens = max(payload.max_tokens, 8192)
+
+    cfg = await resolve_provider_config(db, agent_type="editor")
+    agent = get_editor_agent()
+
+    async def event_gen():
+        # ===== 阶段 1:检测(本地,毫秒级) =====
+        try:
+            findings = agent._detector.detect(text)
+        except Exception as e:
+            logger.exception("polish stream: 检测阶段失败")
+            yield _sse("error", {"phase": "detect", "error": str(e)})
+            return
+
+        blocking_count = sum(1 for f in findings if f.severity.value == "blocking")
+        advisory_count = sum(1 for f in findings if f.severity.value == "advisory")
+        stats = summarize_findings(findings)
+        yield _sse("detected", {
+            "findings": [f.to_dict() for f in findings],
+            "blocking_count": blocking_count,
+            "advisory_count": advisory_count,
+            "stats": stats,
+        })
+
+        # 无 findings → 直接 done,跳过 LLM
+        if not findings:
+            yield _sse("done", {
+                "polished_text": text,
+                "rewrites": [],
+                "summary": "未检测到 AI 痕迹,无需润色",
+                "stats": stats,
+            })
+            return
+
+        # ===== 阶段 2:流式 LLM 改写 =====
+        yield _sse("llm_started", {"model": cfg.model if cfg else "mock"})
+
+        system = build_editor_system_prompt()
+        user = build_editor_user_prompt(
+            chapter_text=text,
+            findings=findings,
+            style_keywords=style_keywords,
+        )
+        req = LLMRequest(
+            messages=[
+                LLMMessage(role="system", content=system),
+                LLMMessage(role="user", content=user),
+            ],
+            model=cfg.model if cfg else "mock",
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        )
+
+        llm = get_llm_service()
+        raw_chunks: list[str] = []
+        try:
+            async for delta in llm.stream(req, cfg):
+                if delta:
+                    raw_chunks.append(delta)
+                    yield _sse("llm_delta", {"content": delta})
+                # 让出事件循环,避免阻塞其它连接
+                await asyncio.sleep(0)
+        except Exception as e:
+            logger.warning("polish stream: LLM 流式失败,降级返回原文(%s)", e)
+            yield _sse("error", {
+                "phase": "llm",
+                "error": str(e),
+                "fallback": {
+                    "polished_text": text,
+                    "rewrites": [],
+                    "summary": f"LLM 流式失败({e.__class__.__name__}),已返回原文 + findings 报告",
+                    "stats": stats,
+                },
+            })
+            return
+
+        # ===== 阶段 3:解析 LLM 完整输出 =====
+        raw = "".join(raw_chunks)
+        rewrites: list[PolishRewrite] = []
+        summary = "本次未执行 LLM 改写"
+        json_text = _extract_json_object(raw)
+        if json_text:
+            try:
+                payload_json = json.loads(json_text)
+                rewrites = [
+                    PolishRewrite(
+                        category=str(r.get("category", "")),
+                        original=str(r.get("original", "")),
+                        rewritten=str(r.get("rewritten", "")),
+                        reason=str(r.get("reason", "")),
+                    )
+                    for r in payload_json.get("rewrites", [])
+                ]
+                summary = str(payload_json.get("summary", summary))
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning("polish stream: JSON 解析失败(%s)", e)
+                summary = "LLM 输出非 JSON,已返回原文 + findings 报告"
+        else:
+            logger.warning(
+                "polish stream: LLM 输出无法解析为 JSON, raw_len=%d", len(raw),
+            )
+            summary = "LLM 输出非 JSON,已返回原文 + findings 报告"
+
+        polished = agent._apply_rewrites(text, findings, rewrites)
+
+        yield _sse("done", {
+            "polished_text": polished,
+            "rewrites": [r.to_dict() for r in rewrites],
+            "summary": summary,
+            "stats": stats,
+        })
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # 禁用 nginx 缓冲,确保实时推送
+            "Connection": "keep-alive",
+        },
     )

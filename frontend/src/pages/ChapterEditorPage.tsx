@@ -94,6 +94,9 @@ export default function ChapterEditorPage() {
   const [editorSummary, setEditorSummary] = useState('');
   const [editorBlockingCount, setEditorBlockingCount] = useState(0);
   const [editorAdvisoryCount, setEditorAdvisoryCount] = useState(0);
+  // [P1-3] SSE 流式去味进度:phase=detect|llm|done|error,llmChars 累积 LLM delta 字数
+  const [editorPhase, setEditorPhase] = useState<'idle' | 'detect' | 'llm' | 'done' | 'error'>('idle');
+  const [editorLLMChars, setEditorLLMChars] = useState(0);
   // [提交 D] 选区/段落级润色 —— 行内 AI 改写 / 段内润色建议
   const [selection, setSelection] = useState<{ from: number; to: number; text: string } | null>(null);
   const [selectionPolishLoading, setSelectionPolishLoading] = useState(false);
@@ -319,23 +322,68 @@ export default function ChapterEditorPage() {
     const text = plainText.trim();
     if (!text) return;
     setEditorLoading(true);
+    setEditorFindings([]);
+    setEditorRewrites([]);
+    setEditorPolishedText('');
+    setEditorSummary('');
+    setEditorBlockingCount(0);
+    setEditorAdvisoryCount(0);
+    setEditorPhase('detect');
+    setEditorLLMChars(0);
     try {
-      const result = await chaptersApi.polish({
-        text,
-        style_keywords: chapter?.work_id ? undefined : undefined, // 暂不传,后端默认行为
-      });
-      setEditorRewrites(result.rewrites);
-      setEditorPolishedText(result.polished_text);
-      setEditorSummary(result.summary);
-      setEditorFindings(result.findings);
-      setEditorBlockingCount(result.findings.filter((f) => f.severity === 'blocking').length);
-      setEditorAdvisoryCount(result.findings.filter((f) => f.severity === 'advisory').length);
-      if (result.rewrites.length === 0 && result.findings.length > 0) {
-        message.warning('已生成检测报告,但 LLM 改写未产出(可能未配置 API Key)');
-      } else {
-        message.success(`已生成 ${result.rewrites.length} 条改写建议`);
-      }
+      // SSE 流式:检测 → LLM 流式 → done。无 axios 30s 超时限制。
+      await chaptersApi.polishStream(
+        {
+          text,
+          style_keywords: chapter?.work_id ? undefined : undefined, // 暂不传,后端默认行为
+        },
+        {
+          onDetected: (det) => {
+            setEditorFindings(det.findings);
+            setEditorBlockingCount(det.blocking_count);
+            setEditorAdvisoryCount(det.advisory_count);
+            // 没有 blocking 类痕迹 → LLM 不会被调用,直接 done
+            if (det.blocking_count === 0) {
+              setEditorPhase('done');
+              message.info(`检测完成,无需润色(${det.findings.length} 条建议)`);
+            } else {
+              setEditorPhase('llm');
+              message.info(`已检测到 ${det.blocking_count} 处 AI 痕迹,LLM 改写中…`);
+            }
+          },
+          onLLMStarted: () => {
+            setEditorLLMChars(0);
+          },
+          onLLMDelta: (chunk) => {
+            setEditorLLMChars((n) => n + chunk.length);
+          },
+          onDone: (data) => {
+            setEditorRewrites(data.rewrites);
+            setEditorPolishedText(data.polished_text);
+            setEditorSummary(data.summary);
+            setEditorPhase('done');
+            if (data.rewrites.length === 0 && data.summary.includes('LLM')) {
+              message.warning('已生成检测报告,但 LLM 改写未产出');
+            } else {
+              message.success(`已生成 ${data.rewrites.length} 条改写建议`);
+            }
+          },
+          onError: (err) => {
+            setEditorPhase('error');
+            if (err.fallback) {
+              // LLM 失败但后端给了降级 fallback → 仍展示 findings 报告
+              setEditorRewrites(err.fallback.rewrites);
+              setEditorPolishedText(err.fallback.polished_text);
+              setEditorSummary(err.fallback.summary);
+              message.warning(`LLM 调用失败,已降级返回原文 + 检测报告: ${err.error}`);
+            } else {
+              message.error(`润色失败: ${err.error}`);
+            }
+          },
+        },
+      );
     } catch (err) {
+      setEditorPhase('error');
       message.error(`润色失败:${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setEditorLoading(false);
@@ -379,7 +427,7 @@ export default function ChapterEditorPage() {
     [],
   );
 
-  // 选区级 AI 改写(调 polish)
+  // 选区级 AI 改写(调 polishStream)
   const handleSelectionRewrite = useCallback(async () => {
     if (!selection || !selection.text.trim()) return;
     setSelectionPolishLoading(true);
@@ -391,14 +439,32 @@ export default function ChapterEditorPage() {
     setSelectionPolishedText('');
     setSelectionPolishSummary('');
     try {
-      const result = await chaptersApi.polish({ text: selection.text });
-      setSelectionPolishFindings(result.findings);
-      setSelectionPolishRewrites(result.rewrites);
-      setSelectionPolishedText(result.polished_text);
-      setSelectionPolishSummary(result.summary);
-      if (result.rewrites.length === 0 && result.findings.length > 0) {
-        message.warning('已生成检测报告,但 LLM 改写未产出(可能未配置 API Key)');
-      }
+      await chaptersApi.polishStream(
+        { text: selection.text },
+        {
+          onDetected: (det) => {
+            setSelectionPolishFindings(det.findings);
+          },
+          onDone: (data) => {
+            setSelectionPolishRewrites(data.rewrites);
+            setSelectionPolishedText(data.polished_text);
+            setSelectionPolishSummary(data.summary);
+            if (data.rewrites.length === 0 && data.summary.includes('LLM')) {
+              message.warning('已生成检测报告,但 LLM 改写未产出');
+            }
+          },
+          onError: (err) => {
+            if (err.fallback) {
+              setSelectionPolishRewrites(err.fallback.rewrites);
+              setSelectionPolishedText(err.fallback.polished_text);
+              setSelectionPolishSummary(err.fallback.summary);
+              message.warning(`LLM 失败,降级返回: ${err.error}`);
+            } else {
+              message.error(`改写失败: ${err.error}`);
+            }
+          },
+        },
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       message.error(`改写失败:${msg}`);
@@ -1111,7 +1177,18 @@ export default function ChapterEditorPage() {
         width={840}
         destroyOnClose
       >
-        <Spin spinning={editorLoading} tip={editorLoading ? '检测中…' : ''}>
+        <Spin
+          spinning={editorLoading}
+          tip={
+            editorLoading
+              ? editorPhase === 'detect'
+                ? '正在检测 AI 痕迹…'
+                : editorPhase === 'llm'
+                  ? `LLM 改写中,已收到 ${editorLLMChars} 字…`
+                  : '处理中…'
+              : ''
+          }
+        >
           <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-2">
             {editorFindings.length === 0 && !editorLoading && (
               <div className="p-4 rounded-lg bg-tertiary-container/30 border-l-4 border-tertiary">

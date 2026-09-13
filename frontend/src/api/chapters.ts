@@ -127,8 +127,111 @@ export const chaptersApi = {
   analyzeAIPatterns: (text: string) =>
     http.post<AnalyzeAIPatternsResponse>('/chapters/analyze-ai-patterns', { text }),
 
+  /** 老版同步去味(易超时,不再推荐,保留向后兼容) */
   polish: (payload: PolishChapterRequest) =>
     http.post<PolishChapterResponse>('/chapters/polish', payload),
+
+  /** 流式去味(SSE)—— 不受 axios 30s 超时限制,带实时进度回调。
+   *
+   * 事件序列:
+   * - detected → findings 立即可见(毫秒级)
+   * - llm_started → LLM 开始调用
+   * - llm_delta(content) → LLM 流式片段(多次)
+   * - done → polished_text + rewrites + summary + stats
+   * - error → 失败,fallback 字段含原文 + findings
+   *
+   * 通过 callbacks.onProgress 提供阶段提示,callbacks.onLLMDelta 累积 LLM 原始输出。
+   */
+  polishStream: async (
+    payload: PolishChapterRequest,
+    callbacks: {
+      onDetected?: (data: PolishStreamDetectedPayload) => void;
+      onLLMStarted?: (data: { model: string }) => void;
+      onLLMDelta?: (content: string) => void;
+      onDone?: (data: PolishStreamDonePayload) => void;
+      onError?: (data: PolishStreamErrorPayload) => void;
+    } = {},
+  ): Promise<PolishStreamDonePayload> => {
+    const API_BASE = (import.meta.env.VITE_API_BASE || '/api/v1') as string;
+
+    const res = await fetch(`${API_BASE}/chapters/polish/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok || !res.body) {
+      throw new Error(`SSE 请求失败: HTTP ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let donePayload: PolishStreamDonePayload | null = null;
+
+    // 解析 SSE 格式:event / data 行对,以空行结束
+    const flushEvent = (raw: string): void => {
+      // raw 形如 "event: detected\ndata: {...}\n\n"
+      const eventLines: string[] = [];
+      const dataLines: string[] = [];
+      for (const line of raw.split('\n')) {
+        if (line.startsWith('event:')) eventLines.push(line.slice(6).trim());
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      }
+      if (eventLines.length === 0) return;
+      const eventName = eventLines.join(' ');
+      let parsed: any = {};
+      const dataStr = dataLines.join('\n');
+      if (dataStr) {
+        try {
+          parsed = JSON.parse(dataStr);
+        } catch {
+          parsed = { _raw: dataStr };
+        }
+      }
+      switch (eventName) {
+        case 'detected':
+          callbacks.onDetected?.(parsed as PolishStreamDetectedPayload);
+          break;
+        case 'llm_started':
+          callbacks.onLLMStarted?.(parsed);
+          break;
+        case 'llm_delta':
+          callbacks.onLLMDelta?.(String(parsed.content ?? ''));
+          break;
+        case 'done':
+          donePayload = parsed as PolishStreamDonePayload;
+          callbacks.onDone?.(donePayload);
+          break;
+        case 'error':
+          callbacks.onError?.(parsed as PolishStreamErrorPayload);
+          break;
+        default:
+          // 忽略未知事件
+          break;
+      }
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      // 按双换行切事件;剩余不完整部分继续累积
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+      for (const part of parts) {
+        if (part.trim()) flushEvent(part);
+      }
+    }
+
+    // 处理末尾残余
+    if (buffer.trim()) flushEvent(buffer);
+
+    if (!donePayload) {
+      throw new Error('SSE 流未收到 done 事件');
+    }
+    return donePayload;
+  },
 };
 
 // ==================== Editor Agent ====================
@@ -175,6 +278,28 @@ export interface PolishChapterResponse {
   polished_text: string;
   summary: string;
   stats: AnalyzeAIPatternsResponse['stats'];
+}
+
+// ============ SSE 流式去味事件 payload ============
+
+export interface PolishStreamDetectedPayload {
+  findings: PatternFinding[];
+  blocking_count: number;
+  advisory_count: number;
+  stats: AnalyzeAIPatternsResponse['stats'];
+}
+
+export interface PolishStreamDonePayload {
+  polished_text: string;
+  rewrites: PolishRewrite[];
+  summary: string;
+  stats: AnalyzeAIPatternsResponse['stats'];
+}
+
+export interface PolishStreamErrorPayload {
+  phase: 'detect' | 'llm';
+  error: string;
+  fallback?: PolishStreamDonePayload;
 }
 
 // ==================== Chapter Version ====================
