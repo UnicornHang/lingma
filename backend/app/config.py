@@ -59,6 +59,14 @@ class Settings(BaseSettings):
         "http://127.0.0.1:7860",
     ]
 
+    # ===== [P3.3] Critic 触发自动改写循环 =====
+    # 当 critic.overall 低于此阈值时,触发整章改写(写新 ChapterVersion 保留历史)
+    # 保守起步 0.6:防止劣改、防止生成时长膨胀;可由 per-request 或 per-work 覆盖
+    critic_rewrite_threshold: float = 0.6
+    # 单次生成最多改写次数(包含第一次失败的 0 改写)
+    # 默认 1:首次 critic 不达标则改一次,不再退步
+    critic_rewrite_max: int = 1
+
 
 @lru_cache
 def get_settings() -> Settings:

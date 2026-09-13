@@ -170,3 +170,84 @@ def build_rewrite_full_chapter_prompt(
         f"请直接输出改写后的整章正文(纯文本,不要任何元数据):"
     )
     return system, user
+
+
+# ============== [P3.3] Critic 引导的整章改写 prompt ==============
+
+
+def build_critic_guided_rewrite_prompt(
+    chapter_text: str,
+    consensus_issues: list[str],
+    scores: dict[str, float],
+    style_keywords: list[str] | None = None,
+) -> tuple[str, str]:
+    """返回 (system, user) — 让 LLM 整章改写以解决 critic 指出的故事问题。
+
+    与 ``build_rewrite_full_chapter_prompt`` 的区别:
+    - 后者针对 AI 痕迹(否定铺垫 / 章尾鸡汤 / 排比废话)的微观改写
+    - 本函数针对 critic 共识问题(角色行为不一致 / 节奏拖沓 / 文笔套路 / 钩子缺失)
+      的整章重写
+
+    输入:
+        chapter_text: 当前章节正文
+        consensus_issues: critic 多 persona 共识问题(取 top 3-5)
+        scores: 4 子分 + overall dict(consistency/pacing/prose/engagement/overall)
+        style_keywords: 文风锚(可选)
+
+    输出:
+        (system, user) 二元组 → 直接调 LLM
+
+    语气与硬约束:
+    - 语气是「修复故事问题」,不是「消除 AI 痕迹」
+    - 必须保留情节、人物、字数
+    - 不引入新设定、新角色、新剧情
+    - 输出纯文本章节正文
+    """
+    style_line = ""
+    if style_keywords:
+        style_line = f"【文风锚】贴合关键词:{('、'.join(style_keywords))}。\n"
+
+    # 评分摘要(便于 LLM 看到具体哪一项拖后腿)
+    score_line = (
+        f"一致性 {scores.get('consistency', 0):.2f} · "
+        f"节奏 {scores.get('pacing', 0):.2f} · "
+        f"文笔 {scores.get('prose', 0):.2f} · "
+        f"钩子 {scores.get('engagement', 0):.2f} · "
+        f"综合 {scores.get('overall', 0):.2f}"
+    )
+
+    # 取 top 5 共识问题(避免 prompt 过长)
+    issue_lines = consensus_issues[:5] if consensus_issues else ["(无)"]
+    issues_block = "\n".join(f"- {x}" for x in issue_lines)
+
+    system = dedent(
+        """\
+        你是一位资深中文网络小说编辑,擅长在不破坏原意的前提下改写整章,
+        以解决 critic 评审中识别的故事问题(角色一致性 / 节奏 / 文笔 / 钩子)。
+
+        你会收到:
+        - 当前章节正文
+        - critic 多 Persona 共识问题清单(通常 3-5 条)
+        - 4 子分 + 综合分
+
+        你的任务是:**直接输出改写后的整章正文**(纯文本,不要 Markdown 标题、
+        不要解释、不要「以下是改写后正文」之类前缀)。
+
+        硬性约束:
+        1. 针对共识问题清单逐条修复(在不动情节前提下);未列入清单的内容不要改。
+        2. 保留所有对话、人物、已有设定。
+        3. 不要加入新角色、新设定、新剧情。
+        4. 字数偏差不超过原章节 ±15%。
+        5. 不要输出 markdown fence。
+        6. 如果共识问题清单为空,仍然按文风锚自然润色一遍即可。
+        """
+    ).strip()
+
+    user = (
+        f"{style_line}\n"
+        f"【评分摘要】{score_line}\n\n"
+        f"【critic 共识问题清单】\n{issues_block}\n\n"
+        f"【待改写章节正文】\n{chapter_text}\n\n"
+        f"请直接输出改写后的整章正文(纯文本,不要任何元数据):"
+    )
+    return system, user

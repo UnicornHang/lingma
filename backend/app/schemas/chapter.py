@@ -93,6 +93,25 @@ class GenerateChapterRequest(BaseModel):
         True,
         description="生成完成后是否自动跑 CriticAgent 多 Persona 评审(默认开)",
     )
+    # [P3.3] Critic 触发自动改写:overall < threshold 时整章改写一次再评
+    critic_rewrite_threshold: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "critic overall 阈值,低于此触发自动改写 + 再评;None 时用 settings "
+            "(默认 0.6)。范围 [0.0, 1.0]"
+        ),
+    )
+    critic_rewrite_max: int | None = Field(
+        None,
+        ge=0,
+        le=3,
+        description=(
+            "单次生成最多改写次数;None 时用 settings (默认 1)。0 = 禁用,"
+            "1 = 不达标改一次,2-3 = 多轮迭代"
+        ),
+    )
 
 
 class GenerationStreamEvent(BaseModel):

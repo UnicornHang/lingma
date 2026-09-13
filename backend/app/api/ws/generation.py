@@ -194,6 +194,21 @@ async def _handle_start(
         max_blocking_for_rewrite = int(params.get("max_blocking_for_rewrite", 0))
         # [P2] 自动 critic 评审开关(默认开)
         auto_critic = bool(params.get("auto_critic", True))
+        # [P3.3] Critic 触发自动改写:per-request 覆盖 env 默认,None = 用 settings
+        critic_rewrite_threshold = params.get("critic_rewrite_threshold")
+        if critic_rewrite_threshold is not None:
+            try:
+                critic_rewrite_threshold = float(critic_rewrite_threshold)
+            except (TypeError, ValueError):
+                logger.warning("critic_rewrite_threshold 非数值,忽略: %r", critic_rewrite_threshold)
+                critic_rewrite_threshold = None
+        critic_rewrite_max = params.get("critic_rewrite_max")
+        if critic_rewrite_max is not None:
+            try:
+                critic_rewrite_max = int(critic_rewrite_max)
+            except (TypeError, ValueError):
+                logger.warning("critic_rewrite_max 非整数,忽略: %r", critic_rewrite_max)
+                critic_rewrite_max = None
         # 文风关键词(从 work 取,供自动去味 prompt 使用)
         work_style_keywords: list[str] = []
         try:
@@ -426,6 +441,60 @@ async def _handle_start(
             logger.warning("critic hook failed (graceful,跳过): %s", e)
             critic_summary = None
 
+    # ===== [P3.3] Critic 触发自动改写循环 =====
+    auto_rewrite_report: dict | None = None
+    if (
+        not error_msg
+        and full_content
+        and full_content.strip()
+        and chapter_id is not None
+        and critic_summary is not None
+        and auto_critic
+    ):
+        # resolve threshold / max: per-request > settings 默认(0.6 / 1)
+        from app.config import get_settings as _get_settings
+        _settings = _get_settings()
+        _threshold = critic_rewrite_threshold if critic_rewrite_threshold is not None else _settings.critic_rewrite_threshold
+        _max = critic_rewrite_max if critic_rewrite_max is not None else _settings.critic_rewrite_max
+
+        if _max <= 0:
+            auto_rewrite_report = {
+                "enabled": True,
+                "executed": False,
+                "skipped_reason": "disabled",
+                "iterations": [],
+                "final_overall": critic_summary.get("overall"),
+                "threshold": _threshold,
+            }
+        else:
+            try:
+                rewritten_content, final_summary, auto_rewrite_report = await _run_auto_rewrite_loop(
+                    chapter_id=chapter_id,
+                    work_id=work_id,
+                    initial_content=full_content,
+                    initial_summary=critic_summary,
+                    threshold=_threshold,
+                    max_retries=_max,
+                    cfg=cfg,
+                    style_keywords=work_style_keywords,
+                )
+                # 改写成功后:用最终内容覆盖 full_content(供 finalize / done 用)
+                if rewritten_content != full_content:
+                    full_content = rewritten_content
+                    cleaned_full = rewritten_content
+                # 同步更新 critic_summary 为最终一次评分
+                if final_summary is not None:
+                    critic_summary = final_summary
+            except Exception as e:
+                logger.warning("auto_rewrite loop failed (graceful,跳过): %s", e)
+                auto_rewrite_report = {
+                    "enabled": True,
+                    "executed": True,
+                    "skipped_reason": "loop_exception",
+                    "iterations": [],
+                    "error": str(e),
+                }
+
     # ===== 完成态落库 =====
     model_used = cfg.model if cfg else "mock"
     async with async_session_factory() as db:
@@ -486,6 +555,7 @@ async def _handle_start(
             "mode": mode,
             "auto_polish_report": auto_polish_report,
             "critic": critic_summary,
+            "auto_rewrite_report": auto_rewrite_report,
         })
 
 
@@ -919,3 +989,220 @@ def _resolve_max_tokens(
     if derived is not None:
         return min(derived, MAX_TOKENS_HARD_CEIL)
     return 4096
+
+
+# ==================== [P3.3] Critic 触发自动改写循环 ====================
+
+
+async def _run_auto_rewrite_loop(
+    *,
+    chapter_id: uuid.UUID,
+    work_id: uuid.UUID,
+    initial_content: str,
+    initial_summary: dict,
+    threshold: float,
+    max_retries: int,
+    cfg: ProviderConfig | None,
+    style_keywords: list[str] | None,
+    _session_factory=async_session_factory,  # 测试时可注入 mock factory
+) -> tuple[str, dict | None, dict]:
+    """Critic 引导的整章改写循环。
+
+    行为:
+    - 若 initial_summary.overall >= threshold → 跳过改写,返原内容
+    - 否则最多迭代 max_retries 次,每次:
+      1. RewriteAgent.rewrite_for_critic(content, consensus_issues, scores, ...)
+      2. 若改写成功:写新 ChapterVersion(ai_revised=True)+ 更新 chapter.plain_content
+      3. 再跑 CriticAgent 评分 + 落库
+      4. 若新 overall >= threshold → break 成功
+      5. 异常 → log + break 失败
+    - 返回 (最终 content, 最终 summary, auto_rewrite_report dict)
+
+    异常处理:
+    - 任何子步骤异常 → log + 优雅返回(原文 + 初始 summary + 部分 iterations)
+    - 不抛(让 orchestrator 把失败状态写到 done payload)
+    """
+    from app.agents.critic_agent import CriticAgent
+    from app.agents.rewrite_agent import RewriteAgent
+    from app.models.critic_evaluation import CriticEvaluation
+    from app.models.work import Work
+    from app.services.llm_service import resolve_provider_config
+
+    iterations: list[dict] = []
+    current_content = initial_content
+    current_summary = initial_summary
+    initial_overall = float(initial_summary.get("overall") or 0.0)
+
+    # 第一次已达标 → 完全跳过
+    if initial_overall >= threshold:
+        return current_content, current_summary, {
+            "enabled": True,
+            "executed": False,
+            "skipped_reason": "score_above_threshold",
+            "iterations": [],
+            "initial_overall": initial_overall,
+            "final_overall": initial_overall,
+            "threshold": threshold,
+            "max_retries": max_retries,
+        }
+
+    # 取改写专用 provider(复用 writer 模型)
+    try:
+        async with _session_factory() as db_p:
+            rewrite_cfg = await resolve_provider_config(db_p, agent_type="writer")
+    except Exception:
+        rewrite_cfg = cfg  # 退回到 generation 的 cfg
+
+    # 循环改写
+    for i in range(max_retries):
+        iter_start = time.time()
+        consensus_issues = list(current_summary.get("consensus_issues") or [])
+        scores = {
+            "consistency": current_summary.get("consistency", 0.5),
+            "pacing": current_summary.get("pacing", 0.5),
+            "prose": current_summary.get("prose", 0.5),
+            "engagement": current_summary.get("engagement", 0.5),
+            "overall": current_summary.get("overall", 0.5),
+        }
+
+        # 1. 调 RewriteAgent 改写
+        try:
+            new_content = await RewriteAgent().rewrite_for_critic(
+                content=current_content,
+                consensus_issues=consensus_issues,
+                scores=scores,
+                style_keywords=style_keywords,
+                cfg=rewrite_cfg,
+                max_tokens=4096,
+            )
+        except Exception as e:
+            logger.warning("auto_rewrite 第 %d 次调用 LLM 失败: %s", i + 1, e, exc_info=True)
+            iterations.append({
+                "index": i + 1,
+                "outcome": "error",
+                "error": str(e),
+                "pre_overall": initial_overall if i == 0 else current_summary.get("overall"),
+                "elapsed_ms": int((time.time() - iter_start) * 1000),
+            })
+            break  # graceful 退出
+
+        if not new_content or new_content == current_content:
+            iterations.append({
+                "index": i + 1,
+                "outcome": "no_change",
+                "pre_overall": current_summary.get("overall"),
+                "elapsed_ms": int((time.time() - iter_start) * 1000),
+            })
+            break
+
+        # 2. 写新 ChapterVersion + 更新 chapter.plain_content
+        try:
+            async with _session_factory() as db_w:
+                ch = await db_w.get(Chapter, chapter_id)
+                if not ch:
+                    raise RuntimeError(f"chapter {chapter_id} not found")
+                version_no_snapshot = ch.version + 1
+                ch.plain_content = new_content
+                from app.services.chapter_service import count_words as _cw
+                ch.word_count = _cw(new_content)
+                ch.version = version_no_snapshot
+                # ChapterVersion 记录
+                cv = ChapterVersion(
+                    chapter_id=chapter_id,
+                    version_no=version_no_snapshot,
+                    content=ch.content if isinstance(ch.content, dict) else {},
+                    plain_content=new_content,
+                    generated_by="ai_revised",
+                    prompt_used=f"[auto_rewrite] critic consensus={consensus_issues[:3]}",
+                    model_used=rewrite_cfg.model if rewrite_cfg else "mock",
+                    token_usage={"input": 0, "output": 0, "auto_rewrite_iter": i + 1},
+                    note=f"critic auto-rewrite iter {i + 1}",
+                )
+                db_w.add(cv)
+                await db_w.commit()
+                current_content = new_content
+        except Exception as e:
+            logger.warning("auto_rewrite 第 %d 次落库失败: %s", i + 1, e, exc_info=True)
+            iterations.append({
+                "index": i + 1,
+                "outcome": "persist_error",
+                "error": str(e),
+                "pre_overall": current_summary.get("overall"),
+                "elapsed_ms": int((time.time() - iter_start) * 1000),
+            })
+            break
+
+        # 3. 再跑 critic 评改写后的内容
+        try:
+            async with _session_factory() as db_e:
+                evaluation, model_name = await CriticAgent().evaluate(
+                    db_e,
+                    work_id=work_id,
+                    chapter_id=chapter_id,
+                    content=new_content,
+                )
+            new_overall = evaluation.aggregated.overall
+
+            # 4. 落库 + 更新 current_summary
+            async with _session_factory() as db_w2:
+                ce = CriticEvaluation(
+                    chapter_id=chapter_id,
+                    version_no=version_no_snapshot,
+                    overall=evaluation.aggregated.overall,
+                    consistency=evaluation.aggregated.consistency,
+                    pacing=evaluation.aggregated.pacing,
+                    prose=evaluation.aggregated.prose,
+                    engagement=evaluation.aggregated.engagement,
+                    persona_scores=[p.model_dump() for p in evaluation.persona_scores],
+                    consensus_issues=list(evaluation.consensus_issues),
+                    model_used=model_name or "",
+                )
+                db_w2.add(ce)
+                await db_w2.commit()
+
+            current_summary = {
+                "overall": evaluation.aggregated.overall,
+                "consistency": evaluation.aggregated.consistency,
+                "pacing": evaluation.aggregated.pacing,
+                "prose": evaluation.aggregated.prose,
+                "engagement": evaluation.aggregated.engagement,
+                "consensus_issues": list(evaluation.consensus_issues),
+                "model_used": model_name or "",
+            }
+
+            iter_record = {
+                "index": i + 1,
+                "outcome": "success" if new_overall >= threshold else "below_threshold",
+                "pre_overall": scores["overall"],
+                "post_overall": new_overall,
+                "version_no": version_no_snapshot,
+                "elapsed_ms": int((time.time() - iter_start) * 1000),
+            }
+            iterations.append(iter_record)
+
+            if new_overall >= threshold:
+                break  # 达标退出
+        except Exception as e:
+            logger.warning("auto_rewrite 第 %d 次再评失败: %s", i + 1, e, exc_info=True)
+            iterations.append({
+                "index": i + 1,
+                "outcome": "re_evaluate_error",
+                "error": str(e),
+                "pre_overall": scores["overall"],
+                "elapsed_ms": int((time.time() - iter_start) * 1000),
+            })
+            break
+
+    final_overall = current_summary.get("overall", initial_overall)
+    executed = len(iterations) > 0
+    return current_content, current_summary, {
+        "enabled": True,
+        "executed": executed,
+        "skipped_reason": None if executed else "no_iterations",
+        "iterations": iterations,
+        "initial_overall": initial_overall,
+        "final_overall": final_overall,
+        "threshold": threshold,
+        "max_retries": max_retries,
+        "improved": final_overall >= threshold and executed,
+    }
