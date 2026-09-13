@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Empty, Spin, App as AntApp, Button } from 'antd';
+import { Dropdown, Empty, Spin, App as AntApp, Button } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   BookOpen,
   FileText,
@@ -9,9 +11,11 @@ import {
   MoreHorizontal,
   Clock,
   ArrowLeft,
+  Download,
 } from 'lucide-react';
 
 import { worksApi, chaptersApi, checkHealth, type Work, type Chapter } from '@/api';
+import { ExportWorkModal } from '@/components/Export/ExportWorkModal';
 
 interface ChapterSummary {
   id: string;
@@ -24,6 +28,8 @@ interface ChapterSummary {
 export default function WorkDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { message } = AntApp.useApp();
+  // [P3.4] 导出 modal 开关
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const workQuery = useQuery({
     queryKey: ['work', id],
@@ -165,13 +171,20 @@ export default function WorkDetailPage() {
                   角色
                 </Button>
               </Link>
-              <Button
-                type="text"
-                shape="circle"
-                icon={<MoreHorizontal size={24} />}
-                style={{ marginLeft: 'auto', color: 'white' }}
-                aria-label="更多操作"
-              />
+              <Dropdown
+                menu={getMoreMenu(() => setExportModalOpen(true))}
+                trigger={['click']}
+                placement="bottomRight"
+              >
+                <Button
+                  type="text"
+                  shape="circle"
+                  icon={<MoreHorizontal size={24} />}
+                  style={{ marginLeft: 'auto', color: 'white' }}
+                  aria-label="更多操作"
+                  data-testid="work-more-actions"
+                />
+              </Dropdown>
             </div>
           </div>
         </section>
@@ -233,8 +246,32 @@ export default function WorkDetailPage() {
           )}
         </section>
       </div>
+
+      {/* [P3.4] 导出 Modal */}
+      {id && work && (
+        <ExportWorkModal
+          open={exportModalOpen}
+          onClose={() => setExportModalOpen(false)}
+          workId={id}
+          workTitle={work.title}
+        />
+      )}
     </div>
   );
+}
+
+/** [P3.4] 「更多操作」下拉菜单(DOCX / EPUB 共用 → 打开 modal 让用户选格式)。 */
+function getMoreMenu(onExport: () => void): { items: MenuProps['items'] } {
+  return {
+    items: [
+      {
+        key: 'export',
+        label: '导出作品',
+        icon: <Download size={16} />,
+        onClick: onExport,
+      },
+    ],
+  };
 }
 
 const GENRE_LABEL: Record<string, string> = {
