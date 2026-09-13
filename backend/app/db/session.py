@@ -38,6 +38,7 @@ async def init_db() -> None:
         api_config,
         chapter,
         character,
+        critic_evaluation,  # [P2]
         outline,
         setting,
         task,

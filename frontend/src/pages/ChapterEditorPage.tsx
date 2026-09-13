@@ -26,6 +26,7 @@ import {
   type TipTapDoc,
   type PatternFinding,
   type PolishRewrite,
+  type CriticSummary,
 } from '@/api/chapters';
 import { outlineApi, type OutlineTreeNode } from '@/api/outline';
 import { useGenerationStream } from '@/hooks/useGenerationStream';
@@ -108,6 +109,8 @@ export default function ChapterEditorPage() {
   const [selectionPolishRange, setSelectionPolishRange] = useState<{ from: number; to: number } | null>(null);
   // 浮动气泡定位:相对视口的 x/y
   const [bubblePos, setBubblePos] = useState<{ x: number; y: number } | null>(null);
+  // [P2] 最新一次 critic 评审(本次生成或上次刷新页面后保留)
+  const [latestCritic, setLatestCritic] = useState<CriticSummary | null>(null);
 
   const saveTimerRef = useRef<number | null>(null);
   const editorRef = useRef<RichEditorHandle>(null);
@@ -203,6 +206,10 @@ export default function ChapterEditorPage() {
         continue_from_chars: 1500,
         target_word_count: 800,
         outline_node_id: outlineNodeId ?? undefined,
+        // [P2] 显式打开自动去味 + 自动 critic 开关(后端默认也是 true,
+        // 前端显式声明以便 TypeScript 编译期可见、后续可一键关闭)
+        auto_polish: true,
+        auto_critic: true,
       });
       setTaskId(resp.task_id);
     } catch (err: unknown) {
@@ -223,6 +230,9 @@ export default function ChapterEditorPage() {
         continue_from_chars: 1500,
         max_tokens: 1500,
         temperature: 0.85,
+        // [P2] 与 chaptersApi.generate 同步:显式打开自动去味 + 自动 critic
+        auto_polish: true,
+        auto_critic: true,
         onDelta: (chunk) => editorRef.current?.insertContent(chunk),
       }
     );
@@ -269,8 +279,12 @@ export default function ChapterEditorPage() {
         setEditorAdvisoryCount(report.advisory_count);
       }
     }
+    // [P2] 自动 critic 评审结果:持久化到 chapter.latestCritic 用于「质检」卡片渲染
+    if (generation.criticReport) {
+      setLatestCritic(generation.criticReport);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generation.status, generation.content, generation.autoPolishReport]);
+  }, [generation.status, generation.content, generation.autoPolishReport, generation.criticReport]);
 
   // 错误状态
   useEffect(() => {
@@ -1014,25 +1028,56 @@ export default function ChapterEditorPage() {
             </div>
           </div>
 
-          {/* Critic score */}
+          {/* [P2] Critic score —— 真实数据,4 维度 × 10 分制 */}
           <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant/40 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="chip-secondary">质检</span>
-              <span className="font-code-sm text-outline">总分 8.4 / 10</span>
+              <span className="font-code-sm text-outline">
+                {latestCritic
+                  ? `总分 ${(latestCritic.overall * 10).toFixed(1)} / 10 · ${latestCritic.model_used || '—'}`
+                  : '尚未评审 — 点 AI 续写自动生成'}
+              </span>
             </div>
             <div className="grid grid-cols-4 gap-2 mt-1">
-              {[
-                { v: '9.1', l: '节奏' },
-                { v: '8.6', l: '对话' },
-                { v: '8.0', l: '描写' },
-                { v: '7.9', l: '钩子' },
-              ].map((m) => (
-                <div key={m.l} className="flex flex-col items-center p-2 rounded bg-surface-container-lowest">
-                  <span className="text-headline-sm font-bold text-primary">{m.v}</span>
-                  <span className="font-code-sm text-outline">{m.l}</span>
+              {latestCritic ? (
+                [
+                  { v: latestCritic.consistency, l: '一致性' },
+                  { v: latestCritic.pacing, l: '节奏' },
+                  { v: latestCritic.prose, l: '文笔' },
+                  { v: latestCritic.engagement, l: '代入感' },
+                ].map((m) => (
+                  <div
+                    key={m.l}
+                    className={`flex flex-col items-center p-2 rounded bg-surface-container-lowest ${
+                      m.v < 0.6 ? 'ring-1 ring-error/60' : ''
+                    }`}
+                  >
+                    <span
+                      className={`text-headline-sm font-bold ${
+                        m.v < 0.6 ? 'text-error' : 'text-primary'
+                      }`}
+                    >
+                      {(m.v * 10).toFixed(1)}
+                    </span>
+                    <span className="font-code-sm text-outline">{m.l}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="col-span-4 text-center py-3 text-outline font-code-sm">
+                  — · —
                 </div>
-              ))}
+              )}
             </div>
+            {latestCritic && latestCritic.consensus_issues.length > 0 && (
+              <ul className="mt-1 flex flex-col gap-1">
+                {latestCritic.consensus_issues.slice(0, 3).map((issue, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-body-sm">
+                    <AlertTriangle size={14} className="text-error mt-0.5 shrink-0" />
+                    <span className="text-on-surface">{issue}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* World bible check */}

@@ -54,6 +54,10 @@ class CriticAgent(BaseAgent):
     # ------- 兼容旧版 orchestrator 调用 -------
 
     async def execute(self, context: dict) -> dict:
+        """[P2] Orchestrator 占位实现 —— 当前生产路径不走 orchestrator,
+        WS critic hook 直接调 evaluate()。若未来 orchestrator 接入,应改为:
+            return (await self.evaluate(...))[0].model_dump()
+        """
         return {
             "agent": self.agent_type,
             "scores": {

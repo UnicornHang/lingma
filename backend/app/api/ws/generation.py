@@ -192,6 +192,8 @@ async def _handle_start(
         # [提交 C] 自动去味开关(默认开)
         auto_polish = bool(params.get("auto_polish", True))
         max_blocking_for_rewrite = int(params.get("max_blocking_for_rewrite", 0))
+        # [P2] 自动 critic 评审开关(默认开)
+        auto_critic = bool(params.get("auto_critic", True))
         # 文风关键词(从 work 取,供自动去味 prompt 使用)
         work_style_keywords: list[str] = []
         try:
@@ -355,6 +357,69 @@ async def _handle_start(
         # 把去味结果同步回 full_content,确保落库与前端一致
         full_content = cleaned_full
 
+    # ===== [P2] 自动 critic 评审(失败兜底,不阻断 writer;在落库前先抓 chapter.version 快照) =====
+    critic_summary: dict | None = None
+    if (
+        not error_msg
+        and auto_critic
+        and full_content
+        and full_content.strip()
+        and chapter_id is not None
+    ):
+        try:
+            from app.agents.critic_agent import CriticAgent
+            from app.models.critic_evaluation import CriticEvaluation
+            from app.schemas.critic import CriticSummary
+
+            # 1) 抓 version 快照(独立会话;writer finalize 还没跑,version 未变)
+            async with async_session_factory() as db_v:
+                ch_v = await db_v.get(Chapter, chapter_id)
+                version_no_snapshot = ch_v.version if ch_v else 1
+
+            # 2) 跑 critic(独立会话;evaluate 内部用 resolve_provider_config)
+            async with async_session_factory() as db_e:
+                evaluation, model_name = await CriticAgent().evaluate(
+                    db_e,
+                    work_id=work_id,
+                    chapter_id=chapter_id,
+                    content=full_content,
+                )
+
+            # 3) 落库 + 构造 summary(独立会话,避免长事务)
+            async with async_session_factory() as db_w:
+                ce = CriticEvaluation(
+                    chapter_id=chapter_id,
+                    version_no=version_no_snapshot,
+                    overall=evaluation.aggregated.overall,
+                    consistency=evaluation.aggregated.consistency,
+                    pacing=evaluation.aggregated.pacing,
+                    prose=evaluation.aggregated.prose,
+                    engagement=evaluation.aggregated.engagement,
+                    persona_scores=[p.model_dump() for p in evaluation.persona_scores],
+                    consensus_issues=list(evaluation.consensus_issues),
+                    model_used=model_name or "",
+                )
+                db_w.add(ce)
+                await db_w.commit()
+                await db_w.refresh(ce)
+                critic_summary = CriticSummary(
+                    overall=evaluation.aggregated.overall,
+                    consistency=evaluation.aggregated.consistency,
+                    pacing=evaluation.aggregated.pacing,
+                    prose=evaluation.aggregated.prose,
+                    engagement=evaluation.aggregated.engagement,
+                    consensus_issues=list(evaluation.consensus_issues),
+                    model_used=model_name or "",
+                    evaluation_id=str(ce.id),
+                ).model_dump()
+            logger.info(
+                "critic hook 完成: chapter=%s, version=%d, overall=%.3f",
+                chapter_id, version_no_snapshot, evaluation.aggregated.overall,
+            )
+        except Exception as e:
+            logger.warning("critic hook failed (graceful,跳过): %s", e)
+            critic_summary = None
+
     # ===== 完成态落库 =====
     model_used = cfg.model if cfg else "mock"
     async with async_session_factory() as db:
@@ -376,6 +441,7 @@ async def _handle_start(
                     "length": len(preview_text),
                     "mode": mode,
                     "auto_polish_report": auto_polish_report,
+                    "critic_report": critic_summary,
                 }
             task.token_usage = final_usage
             await db.commit()
@@ -413,6 +479,7 @@ async def _handle_start(
             "token_usage": final_usage,
             "mode": mode,
             "auto_polish_report": auto_polish_report,
+            "critic": critic_summary,
         })
 
 

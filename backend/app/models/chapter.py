@@ -39,12 +39,20 @@ class Chapter(Base, UUIDMixin, TimestampMixin):
 
     if TYPE_CHECKING:
         from app.models.work import Work
+        from app.models.critic_evaluation import CriticEvaluation
 
     work: Mapped["Work"] = relationship(back_populates="chapters")
     versions: Mapped[list["ChapterVersion"]] = relationship(
         back_populates="chapter",
         cascade="all, delete-orphan",
         lazy="selectin",
+    )
+    # [P2] 章节评审历史(同一章节多版本各一条)
+    evaluations: Mapped[list["CriticEvaluation"]] = relationship(
+        back_populates="chapter",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="CriticEvaluation.created_at.desc()",
     )
 
 

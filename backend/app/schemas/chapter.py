@@ -88,6 +88,11 @@ class GenerateChapterRequest(BaseModel):
         le=20,
         description="blocking finding 阈值,达到/超过即触发自动重写;默认 0 即单条就触发",
     )
+    # [P2] 自动 critic 评审开关:生成完成后跑 CriticAgent 评分并落库
+    auto_critic: bool = Field(
+        True,
+        description="生成完成后是否自动跑 CriticAgent 多 Persona 评审(默认开)",
+    )
 
 
 class GenerationStreamEvent(BaseModel):

@@ -99,3 +99,27 @@ class CriticEvaluateResponse(BaseModel):
     """Critic 评审响应"""
 
     evaluation: CriticEvaluation
+
+
+# ============== [P2] WS done 事件精简版 ==============
+
+
+class CriticSummary(BaseModel):
+    """Critic 评审精简版 —— WS done 事件 + chapter.latestCritic 用
+
+    与 CriticEvaluation 的区别:
+    - 不含 raw_content(可能很长)
+    - 不含 persona_scores 列表(前端只关心聚合分 + 共识问题)
+    - 含 evaluation_id 便于前端「查看历史」(留 P3)
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    overall: float = Field(..., ge=0.0, le=1.0)
+    consistency: float = Field(..., ge=0.0, le=1.0)
+    pacing: float = Field(..., ge=0.0, le=1.0)
+    prose: float = Field(..., ge=0.0, le=1.0)
+    engagement: float = Field(..., ge=0.0, le=1.0)
+    consensus_issues: list[str] = Field(default_factory=list, max_length=10)
+    model_used: str = Field(default="", max_length=64)
+    evaluation_id: str | None = Field(default=None, description="critic_evaluations.id")

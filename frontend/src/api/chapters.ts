@@ -71,6 +71,8 @@ export interface GenerateChapterRequest {
   auto_polish?: boolean;
   /** [提交 C] blocking finding 阈值,达到/超过即触发自动重写;默认 0 */
   max_blocking_for_rewrite?: number;
+  /** [P2] 生成完成后是否自动跑 CriticAgent 多 Persona 评审(默认开) */
+  auto_critic?: boolean;
 }
 
 /** [提交 C] 自动去味报告 —— WS done 事件附带的元数据 */
@@ -278,6 +280,20 @@ export interface PolishChapterResponse {
   polished_text: string;
   summary: string;
   stats: AnalyzeAIPatternsResponse['stats'];
+}
+
+// ============ [P2] Critic 评审精简版(WS done 事件 + chapter.latestCritic 用) ============
+
+export interface CriticSummary {
+  overall: number;
+  consistency: number;
+  pacing: number;
+  prose: number;
+  engagement: number;
+  consensus_issues: string[];
+  model_used: string;
+  /** critic_evaluations.id,前端留 P3 用于"查看历史" */
+  evaluation_id?: string | null;
 }
 
 // ============ SSE 流式去味事件 payload ============

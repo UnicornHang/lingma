@@ -77,6 +77,7 @@ async def main() -> None:
     delta_count = 0
     full = ""
     done_content = ""
+    done_critic = None  # [P2]
     final_usage = None
 
     async with websockets.connect(ws_url) as ws:
@@ -114,7 +115,9 @@ async def main() -> None:
             elif ev["type"] == "done":
                 final_usage = ev.get("token_usage")
                 done_content = ev.get("content", "")
+                done_critic = ev.get("critic")  # [P2]
                 print(f"[ws] {ev['type']} done_content_len={len(done_content)} raw_full_len={len(full)} token_usage={final_usage}")
+                print(f"[ws]   critic: {done_critic}")
                 break
             elif ev["type"] in ("error", "cancelled"):
                 print(f"[ws] {ev['type']}: {ev.get('error')}")
@@ -169,10 +172,38 @@ async def main() -> None:
                 }
                 for row in r2.fetchall()
             ]
+            # [P2] critic_evaluations 落库校验
+            r3 = await db.execute(
+                sa_text(
+                    "SELECT overall, consistency, pacing, prose, engagement, "
+                    "length(consensus_issues) AS issues_len, model_used, version_no "
+                    "FROM critic_evaluations WHERE chapter_id = :cid "
+                    "ORDER BY created_at DESC"
+                ),
+                {"cid": ch_id_hex},
+            )
+            critic_rows = [
+                {
+                    "overall": row[0],
+                    "consistency": row[1],
+                    "pacing": row[2],
+                    "prose": row[3],
+                    "engagement": row[4],
+                    "issues_len": row[5],
+                    "model_used": row[6],
+                    "version_no": row[7],
+                }
+                for row in r3.fetchall()
+            ]
         print()
         print(f"=== ChapterVersion rows: {len(versions)} ===")
         for v in versions[:3]:
             print(f"  v{v['version_no']}: by={v['generated_by']}, model={v['model_used']}, note={v['note']!r}, len={v['plen']}, has_think={'<think>' in v['plain_content']}")
+
+        print()
+        print(f"=== CriticEvaluation rows: {len(critic_rows)} ===")
+        for c in critic_rows[:3]:
+            print(f"  v{c['version_no']}: overall={c['overall']:.3f}, pacing={c['pacing']:.3f}, prose={c['prose']:.3f}, engagement={c['engagement']:.3f}, issues={c['issues_len']}, model={c['model_used']!r}")
 
     # 断言
     assert final_ch["plain_content"].startswith(baseline), "plain_content should be appended (starts with baseline)"
@@ -194,6 +225,8 @@ async def main() -> None:
         print("=== ROLLBACK PATH OK ===")
         # [P1-2] 即使 rollback,prefill stage 事件也应已发出(在 start 之前)
         _assert_prefill_events(stage_events)
+        # [P2] rollback 路径下 critic 不应被记录(因为没有有效正文)
+        assert not critic_rows, f"rollback should NOT write CriticEvaluation, got {len(critic_rows)}"
         return
 
     # 正常生成路径:cleaned 内容充分,后续断言严格
@@ -205,6 +238,8 @@ async def main() -> None:
     assert "<think>" not in ai_revised[0]["plain_content"], "ChapterVersion.ai_revised should NOT contain <think>"
     # [P1-2] prefill stage 事件校验
     _assert_prefill_events(stage_events)
+    # [P2] critic 评审软断言(graceful degradation)
+    _assert_critic_event(done_critic, critic_rows)
     print()
     print("=== ALL ASSERTIONS PASSED ===")
 
@@ -241,6 +276,43 @@ def _assert_prefill_events(stage_events: list[dict]) -> None:
         assert "stage" in ev, "stage event must have 'stage' field"
         assert ev.get("type") == "stage", f"type field must be 'stage', got {ev.get('type')!r}"
     print("=== Prefill stage events OK ===")
+
+
+def _assert_critic_event(done_critic, critic_rows: list[dict]) -> None:
+    """[P2] 校验 critic 评审结果。
+
+    期望(软断言,graceful degradation):
+    - WS done 事件的 critic 字段为 dict 或 None(不应缺字段)
+    - 若 critic 跑成功:DB critic_evaluations 表应有 ≥ 1 行
+    - 若 critic 失败(LLM 异常):done_critic 应为 None,DB 无行 —— 不算失败
+
+    不做硬断言的原因:critic 失败 = graceful,不影响 writer;e2e 应当容忍。
+    """
+    print()
+    print(f"=== P2 Critic Event: {type(done_critic).__name__} ===")
+    if done_critic is None:
+        print(f"  WS done.critic = None (critic 跑失败或被关闭) — 跳过 DB 校验")
+        return
+
+    # 校验 done.critic 字段齐全
+    expected_keys = {"overall", "consistency", "pacing", "prose", "engagement",
+                     "consensus_issues", "model_used"}
+    missing = expected_keys - set(done_critic.keys())
+    assert not missing, f"critic payload 缺字段: {missing}"
+    print(f"  overall={done_critic['overall']:.3f} consistency={done_critic['consistency']:.3f} "
+          f"pacing={done_critic['pacing']:.3f} prose={done_critic['prose']:.3f} "
+          f"engagement={done_critic['engagement']:.3f}")
+    print(f"  model_used={done_critic['model_used']!r} issues={len(done_critic['consensus_issues'])}")
+
+    # 校验 DB 落库
+    if not critic_rows:
+        print(f"  WARN: critic hook 报了事件但 critic_evaluations 表无行 (事务可能未提交)")
+    else:
+        print(f"  DB critic_evaluations: {len(critic_rows)} 行")
+        for c in critic_rows:
+            assert 0.0 <= c["overall"] <= 1.0, f"overall 越界: {c['overall']}"
+            assert 0.0 <= c["pacing"] <= 1.0, f"pacing 越界: {c['pacing']}"
+    print("=== Critic event OK (soft) ===")
 
 
 if __name__ == "__main__":

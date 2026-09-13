@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWebSocket } from './useWebSocket';
-import type { AutoPolishReport } from '@/api/chapters';
+import type { AutoPolishReport, CriticSummary } from '@/api/chapters';
 
 /** 与 docs/API.md 一致的 WS 服务端推送类型 */
 export type GenerationServerEvent =
@@ -16,6 +16,8 @@ export type GenerationServerEvent =
       mode?: 'continue' | 'generate';
       /** [提交 C] 自动去味报告(若开启) */
       auto_polish_report?: AutoPolishReport | null;
+      /** [P2] 自动 critic 评审报告(若开启) */
+      critic?: CriticSummary | null;
     }
   | { type: 'error'; task_id?: string; stream_id?: string; error: string }
   | { type: 'cancelled'; task_id: string }
@@ -35,6 +37,8 @@ export interface GenerationClientStartMessage {
   auto_polish?: boolean;
   /** [提交 C] blocking 阈值 */
   max_blocking_for_rewrite?: number;
+  /** [P2] 是否启用自动 critic 评审(默认 true) */
+  auto_critic?: boolean;
 }
 
 export type GenerationClientMessage =
@@ -58,6 +62,8 @@ export interface GenerationStartOpts {
   auto_polish?: boolean;
   /** [提交 C] blocking 阈值 */
   max_blocking_for_rewrite?: number;
+  /** [P2] 自动 critic 评审开关(默认 true) */
+  auto_critic?: boolean;
   /** 每个 delta 到达时的回调（用于实时插入编辑器） */
   onDelta?: (chunk: string) => void;
 }
@@ -79,6 +85,8 @@ interface UseGenerationStreamReturn {
   model: string | null;
   /** [提交 C] 自动去味报告(done 时填充) */
   autoPolishReport: AutoPolishReport | null;
+  /** [P2] 自动 critic 评审报告(done 时填充) */
+  criticReport: CriticSummary | null;
   /**
    * 注册「待发 start 意图」。Hook 内部 effect 会在 WS 进入 OPEN 时自动发送。
    * 多次调用以最新一次为准。StrictMode 双连接场景下安全:
@@ -127,6 +135,8 @@ export function useGenerationStream(
   const [model, setModel] = useState<string | null>(null);
   // [提交 C] 自动去味报告(done 时填充)
   const [autoPolishReport, setAutoPolishReport] = useState<AutoPolishReport | null>(null);
+  // [P2] 自动 critic 评审报告(done 时填充)
+  const [criticReport, setCriticReport] = useState<CriticSummary | null>(null);
 
   // 防止卸载后仍然 setState
   const mountedRef = useRef(true);
@@ -180,6 +190,7 @@ export function useGenerationStream(
           setError(null);
           setModel(lastMessage.model);
           setAutoPolishReport(null);
+          setCriticReport(null);
         });
         break;
       case 'delta':
@@ -194,6 +205,7 @@ export function useGenerationStream(
           setContent(lastMessage.content);
           setStatus('done');
           setAutoPolishReport(lastMessage.auto_polish_report ?? null);
+          setCriticReport(lastMessage.critic ?? null);
         });
         break;
       case 'error':
@@ -239,6 +251,7 @@ export function useGenerationStream(
       target_word_count: opts?.target_word_count,
       auto_polish: opts?.auto_polish,
       max_blocking_for_rewrite: opts?.max_blocking_for_rewrite,
+      auto_critic: opts?.auto_critic,
     };
     send(payload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -275,6 +288,7 @@ export function useGenerationStream(
           target_word_count: opts?.target_word_count,
           auto_polish: opts?.auto_polish,
           max_blocking_for_rewrite: opts?.max_blocking_for_rewrite,
+          auto_critic: opts?.auto_critic,
         };
         send(payload);
       }
@@ -296,8 +310,9 @@ export function useGenerationStream(
     setError(null);
     setModel(null);
     setAutoPolishReport(null);
+    setCriticReport(null);
     optsRef.current = null;
   }, []);
 
-  return { status, content, error, model, autoPolishReport, start, cancel, reset };
+  return { status, content, error, model, autoPolishReport, criticReport, start, cancel, reset };
 }

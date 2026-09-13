@@ -46,6 +46,7 @@ async def _setup_database():
             api_config,
             chapter,
             character,
+            critic_evaluation,  # [P2]
             outline,
             setting,
             task,
