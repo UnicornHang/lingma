@@ -15,6 +15,9 @@ import {
   Tag,
   AutoComplete,
   Tooltip,
+  Slider,
+  Radio,
+  Space,
 } from 'antd';
 import {
   Sliders,
@@ -31,15 +34,23 @@ import {
   EyeOff,
   Power,
   RefreshCw,
+  Star,
+  Check,
+  X as XIcon,
 } from 'lucide-react';
 
 import {
   apiConfigsApi,
   PROVIDERS,
   AGENT_TYPES,
+  settingsApi,
+  stylePresetsApi,
   type ApiConfig,
   type ApiConfigCreate,
   type ProviderValue,
+  type SettingsBundle,
+  type StylePreset,
+  type StylePresetCreate,
 } from '@/api';
 
 const SUBNAV = [
@@ -76,52 +87,636 @@ function SubNav() {
   );
 }
 
-function SettingsPlaceholder({ title, desc }: { title: string; desc: string }) {
+// =================================================================
+// ============== 常规设置 (GeneralSettings) ==============
+// =================================================================
+
+function GeneralSettings() {
+  const { message } = App.useApp();
+  const qc = useQueryClient();
+  const settingsQ = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => settingsApi.get(),
+  });
+  const presetsQ = useQuery({
+    queryKey: ['style-presets'],
+    queryFn: () => stylePresetsApi.list(),
+  });
+  const apisQ = useQuery({
+    queryKey: ['api-configs'],
+    queryFn: () => apiConfigsApi.list(),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (data: Partial<SettingsBundle>) => settingsApi.update(data),
+    onSuccess: () => {
+      message.success('已保存');
+      qc.invalidateQueries({ queryKey: ['settings'] });
+    },
+    onError: (e: unknown) => message.error(e instanceof Error ? e.message : '保存失败'),
+  });
+
+  if (settingsQ.isLoading || presetsQ.isLoading || apisQ.isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Spin size="large" />
+      </div>
+    );
+  }
+  if (settingsQ.error) {
+    return <div className="flex-1 p-8 text-error">加载失败：{(settingsQ.error as Error).message}</div>;
+  }
+
+  const settings = settingsQ.data!;
+  const presets = presetsQ.data ?? [];
+  const apis = (apisQ.data ?? []).filter((c) => c.enabled);
+
+  return (
+    <div className="flex-1 h-full overflow-y-auto p-8 flex flex-col gap-6">
+      <div>
+        <h1 className="text-headline-lg font-bold text-on-surface">常规设置</h1>
+        <p className="text-body-md text-on-surface-variant mt-1">
+          个性化界面、写作与 Agent 的全局默认值，仅在本机生效。
+        </p>
+      </div>
+
+      <SectionCard title="写作默认值" icon={<FileText size={20} className="text-primary" />}>
+        <Form layout="vertical" className="!mt-2">
+          <Form.Item label="默认目标字数（新建章节时自动填入）">
+            <InputNumber
+              min={500}
+              max={20000}
+              step={500}
+              value={settings.default_target_word_count}
+              onChange={(v) =>
+                v != null && updateMut.mutate({ default_target_word_count: Number(v) })
+              }
+              className="!w-48"
+            />
+          </Form.Item>
+          <Form.Item label="默认写作风格预设" tooltip="用于章节生成时的提示词风格关键词">
+            <Select
+              allowClear
+              placeholder="未选择"
+              value={settings.active_preset ?? undefined}
+              onChange={(v) =>
+                updateMut.mutate({ active_preset: v ? String(v) : null })
+              }
+              className="!w-64"
+              options={presets.map((p) => ({
+                value: p.name,
+                label: (
+                  <span>
+                    {p.is_builtin && <Star size={12} className="inline mr-1 text-tertiary" />}
+                    {p.name}
+                  </span>
+                ),
+              }))}
+            />
+          </Form.Item>
+          <Form.Item label="默认 LLM 模型" tooltip="新建章节时优先使用的 Provider/模型">
+            <Select
+              allowClear
+              placeholder="未指定"
+              value={settings.default_model ?? undefined}
+              onChange={(v) =>
+                updateMut.mutate({ default_model: v ? String(v) : null })
+              }
+              className="!w-80"
+              options={apis.map((a) => ({
+                value: a.model_name,
+                label: `${a.name} · ${a.model_name}`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item label="自动保存间隔（秒）">
+            <div className="flex items-center gap-3 !w-80">
+              <Slider
+                min={5}
+                max={600}
+                step={5}
+                value={settings.auto_save_interval}
+                onChangeComplete={(v) => updateMut.mutate({ auto_save_interval: v })}
+                className="!flex-1"
+              />
+              <span className="font-code-sm text-on-surface-variant w-12 text-right">
+                {settings.auto_save_interval}s
+              </span>
+            </div>
+          </Form.Item>
+        </Form>
+      </SectionCard>
+    </div>
+  );
+}
+
+// =================================================================
+// ============== 写作偏好 (WritingSettings) ==============
+// =================================================================
+
+function WritingSettings() {
+  const { message } = App.useApp();
+  const qc = useQueryClient();
+  const presetsQ = useQuery({
+    queryKey: ['style-presets'],
+    queryFn: () => stylePresetsApi.list(),
+  });
+  const settingsQ = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => settingsApi.get(),
+  });
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<StylePreset | null>(null);
+  const [form] = Form.useForm();
+
+  const createMut = useMutation({
+    mutationFn: (data: StylePresetCreate) => stylePresetsApi.create(data),
+    onSuccess: () => {
+      message.success('已新建预设');
+      qc.invalidateQueries({ queryKey: ['style-presets'] });
+      closeModal();
+    },
+    onError: (e: unknown) => message.error(e instanceof Error ? e.message : '新建失败'),
+  });
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<StylePresetCreate> }) =>
+      stylePresetsApi.update(id, data),
+    onSuccess: () => {
+      message.success('已保存');
+      qc.invalidateQueries({ queryKey: ['style-presets'] });
+      closeModal();
+    },
+    onError: (e: unknown) => message.error(e instanceof Error ? e.message : '保存失败'),
+  });
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => stylePresetsApi.delete(id),
+    onSuccess: () => {
+      message.success('已删除');
+      qc.invalidateQueries({ queryKey: ['style-presets'] });
+    },
+    onError: (e: unknown) => message.error(e instanceof Error ? e.message : '删除失败'),
+  });
+  const setDefaultMut = useMutation({
+    mutationFn: (name: string | null) => settingsApi.update({ active_preset: name }),
+    onSuccess: () => {
+      message.success('已切换默认预设');
+      qc.invalidateQueries({ queryKey: ['settings'] });
+    },
+    onError: (e: unknown) => message.error(e instanceof Error ? e.message : '切换失败'),
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    form.resetFields();
+    form.setFieldsValue({
+      name: '',
+      description: '',
+      style_keywords: [],
+      target_audience: [],
+      target_word_count: 3000,
+    });
+    setModalOpen(true);
+  };
+
+  const openEdit = (p: StylePreset) => {
+    setEditing(p);
+    form.resetFields();
+    form.setFieldsValue({
+      name: p.name,
+      description: p.description ?? '',
+      style_keywords: p.style_keywords,
+      target_audience: p.target_audience,
+      target_word_count: p.target_word_count,
+    });
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditing(null);
+    form.resetFields();
+  };
+
+  const submit = async () => {
+    try {
+      const v = await form.validateFields();
+      const data: StylePresetCreate = {
+        name: v.name,
+        description: v.description || undefined,
+        style_keywords: v.style_keywords ?? [],
+        target_audience: v.target_audience ?? [],
+        target_word_count: v.target_word_count,
+      };
+      if (editing) updateMut.mutate({ id: editing.id, data });
+      else createMut.mutate(data);
+    } catch {/* 表单校验失败 */}
+  };
+
+  const confirmDelete = (p: StylePreset) => {
+    Modal.confirm({
+      title: `删除预设「${p.name}」？`,
+      content: '删除后引用此预设的作品将自动回退到「默认基调」。',
+      okType: 'danger',
+      onOk: () => deleteMut.mutateAsync(p.id),
+    });
+  };
+
+  if (presetsQ.isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  const presets = presetsQ.data ?? [];
+  const activePreset = settingsQ.data?.active_preset ?? null;
+
   return (
     <div className="flex-1 h-full overflow-y-auto p-8 flex flex-col gap-6">
       <div className="flex items-end justify-between">
         <div className="flex flex-col gap-1">
-          <h1 className="text-headline-lg font-bold text-on-surface">{title}</h1>
-          <p className="text-body-md text-on-surface-variant">{desc}</p>
+          <h1 className="text-headline-lg font-bold text-on-surface">写作偏好</h1>
+          <p className="text-body-md text-on-surface-variant">
+            管理写作预设、风格关键词与体裁受众，作用于所有 Agent 的提示词组装。
+          </p>
+        </div>
+        <Button type="primary" icon={<Plus size={16} />} onClick={openCreate}>
+          新建预设
+        </Button>
+      </div>
+
+      <SectionCard title="风格预设列表" icon={<FileText size={20} className="text-primary" />}>
+        {presets.length === 0 ? (
+          <Empty description="还没有任何预设" />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {presets.map((p) => (
+              <PresetCard
+                key={p.id}
+                preset={p}
+                isDefault={activePreset === p.name}
+                onEdit={() => openEdit(p)}
+                onDelete={() => confirmDelete(p)}
+                onSetDefault={() => setDefaultMut.mutate(p.name)}
+                onClearDefault={() => setDefaultMut.mutate(null)}
+              />
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <Modal
+        title={editing ? `编辑预设「${editing.name}」` : '新建写作风格预设'}
+        open={modalOpen}
+        onCancel={closeModal}
+        onOk={submit}
+        confirmLoading={createMut.isPending || updateMut.isPending}
+        okText={editing ? '保存' : '创建'}
+        cancelText="取消"
+        destroyOnClose
+        width={560}
+      >
+        <PresetForm form={form} isEdit={!!editing} />
+      </Modal>
+    </div>
+  );
+}
+
+function PresetCard({
+  preset,
+  isDefault,
+  onEdit,
+  onDelete,
+  onSetDefault,
+  onClearDefault,
+}: {
+  preset: StylePreset;
+  isDefault: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  onSetDefault: () => void;
+  onClearDefault: () => void;
+}) {
+  return (
+    <div className={`surface-card p-4 flex flex-col gap-3 ${isDefault ? 'ring-2 ring-tertiary' : ''}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-label-lg font-semibold text-on-surface truncate">
+              {preset.name}
+            </span>
+            {preset.is_builtin && (
+              <Tag color="blue" className="!m-0">内置</Tag>
+            )}
+            {isDefault && (
+              <Tag color="gold" className="!m-0">默认</Tag>
+            )}
+          </div>
+          {preset.description && (
+            <p className="text-body-sm text-on-surface-variant line-clamp-2">
+              {preset.description}
+            </p>
+          )}
         </div>
       </div>
-      <div className="surface-card p-6 flex flex-col gap-4">
-        <div className="flex items-center gap-1 pb-3 border-b border-outline-variant/40">
-          <Settings size={20} className="text-primary" />
-          <h2 className="text-headline-sm font-semibold text-on-surface">功能区</h2>
+
+      {(preset.style_keywords.length > 0 || preset.target_audience.length > 0) && (
+        <div className="flex flex-col gap-1.5">
+          {preset.style_keywords.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-label-sm text-on-surface-variant w-14 flex-shrink-0">关键词</span>
+              {preset.style_keywords.map((kw) => (
+                <Tag key={kw} className="!m-0">{kw}</Tag>
+              ))}
+            </div>
+          )}
+          {preset.target_audience.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-label-sm text-on-surface-variant w-14 flex-shrink-0">受众</span>
+              {preset.target_audience.map((a) => (
+                <Tag key={a} color="purple" className="!m-0">{a}</Tag>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="h-32 rounded-lg bg-surface-container-lowest border border-dashed border-outline-variant/40 flex items-center justify-center text-on-surface-low">
-          详细配置项由后续子页面填充
-        </div>
+      )}
+
+      <div className="flex items-center text-body-sm text-on-surface-variant">
+        <span>默认字数</span>
+        <span className="ml-2 font-code-sm text-on-surface">{preset.target_word_count.toLocaleString()}</span>
+      </div>
+
+      <div className="flex items-center gap-2 pt-2 border-t border-outline-variant/30">
+        <Button size="small" icon={<Edit size={14} />} onClick={onEdit}>
+          编辑
+        </Button>
+        {isDefault ? (
+          <Button size="small" icon={<XIcon size={14} />} onClick={onClearDefault}>
+            取消默认
+          </Button>
+        ) : (
+          <Button size="small" icon={<Check size={14} />} onClick={onSetDefault}>
+            设为默认
+          </Button>
+        )}
+        {!preset.is_builtin && (
+          <Button
+            size="small"
+            danger
+            icon={<Trash2 size={14} />}
+            className="ml-auto"
+            onClick={onDelete}
+          >
+            删除
+          </Button>
+        )}
       </div>
     </div>
   );
 }
 
-function GeneralSettings() {
-  return <SettingsPlaceholder title="常规设置" desc="个性化界面、写作与 Agent 的全局默认值，仅在本机生效。" />;
-}
-
-function WritingSettings() {
+function PresetForm({ form, isEdit }: { form: ReturnType<typeof Form.useForm>[0]; isEdit: boolean }) {
   return (
-    <SettingsPlaceholder
-      title="写作偏好"
-      desc="管理写作预设、风格关键词与体裁受众，作用于所有 Agent 的提示词组装。"
-    />
+    <Form form={form} layout="vertical" className="!mt-2">
+      <Form.Item label="预设名称" name="name" rules={[{ required: true, min: 1, max: 100 }]}>
+        <Input placeholder="如：仙侠玄幻 / 都市言情" disabled={isEdit} />
+      </Form.Item>
+      <Form.Item label="描述" name="description">
+        <Input.TextArea rows={2} maxLength={500} showCount placeholder="一句话描述风格特征" />
+      </Form.Item>
+      <Form.Item
+        label="风格关键词"
+        name="style_keywords"
+        tooltip="回车确认，将注入 WriterAgent 提示词"
+      >
+        <Select mode="tags" placeholder="如：热血、修仙、升级" />
+      </Form.Item>
+      <Form.Item label="目标读者" name="target_audience" tooltip="如：男频 / 女频 / 不限">
+        <Select mode="tags" placeholder="回车确认多个标签" />
+      </Form.Item>
+      <Form.Item label="默认目标字数" name="target_word_count">
+        <InputNumber min={500} max={20000} step={500} className="!w-full" />
+      </Form.Item>
+    </Form>
   );
-}
-function AppearanceSettings() {
-  return <SettingsPlaceholder title="外观主题" desc="主题、密度、字体与色彩，实时预览并立即生效。" />;
-}
-function BackupSettings() {
-  return <SettingsPlaceholder title="数据与备份" desc="查看本地数据占用、即时备份或恢复、清理不再需要的内容。" />;
-}
-function AboutSettings() {
-  return <SettingsPlaceholder title="关于织梦" desc="项目信息、技术栈、开源协议与社区入口。" />;
 }
 
 // =================================================================
-// ============== LLM API 配置 —— 真实数据版 ==============
+// ============== 外观主题 (AppearanceSettings) ==============
+// =================================================================
+
+function AppearanceSettings() {
+  const { message } = App.useApp();
+  const qc = useQueryClient();
+  const settingsQ = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => settingsApi.get(),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (data: Partial<SettingsBundle>) => settingsApi.update(data),
+    onSuccess: () => {
+      message.success('已保存');
+      qc.invalidateQueries({ queryKey: ['settings'] });
+    },
+    onError: (e: unknown) => message.error(e instanceof Error ? e.message : '保存失败'),
+  });
+
+  if (settingsQ.isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Spin size="large" />
+      </div>
+    );
+  }
+  const settings = settingsQ.data!;
+
+  const update = (patch: Partial<SettingsBundle>) => updateMut.mutate(patch);
+
+  return (
+    <div className="flex-1 h-full overflow-y-auto p-8 flex flex-col gap-6">
+      <div>
+        <h1 className="text-headline-lg font-bold text-on-surface">外观主题</h1>
+        <p className="text-body-md text-on-surface-variant mt-1">
+          主题、密度、字体与色彩，实时预览并立即生效。
+        </p>
+      </div>
+
+      <SectionCard title="主题" icon={<Palette size={20} className="text-primary" />}>
+        <Form layout="vertical" className="!mt-2">
+          <Form.Item label="配色方案">
+            <Radio.Group
+              value={settings.theme}
+              onChange={(e) => update({ theme: e.target.value })}
+              optionType="button"
+            >
+              <Radio.Button value="light">浅色</Radio.Button>
+              <Radio.Button value="dark">深色</Radio.Button>
+              <Radio.Button value="system">跟随系统</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+
+          <Form.Item label="界面密度">
+            <Radio.Group
+              value={settings.density}
+              onChange={(e) => update({ density: e.target.value })}
+              optionType="button"
+            >
+              <Radio.Button value="comfortable">舒适</Radio.Button>
+              <Radio.Button value="compact">紧凑</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+
+          <Form.Item label="语言">
+            <Select
+              value={settings.language}
+              onChange={(v) => update({ language: String(v) })}
+              className="!w-48"
+              options={[
+                { value: 'zh-CN', label: '简体中文' },
+                { value: 'en-US', label: 'English (US)' },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item label={`字体大小（${settings.font_size}px）`}>
+            <div className="flex items-center gap-3 !w-80">
+              <Slider
+                min={10}
+                max={24}
+                value={settings.font_size}
+                onChangeComplete={(v) => update({ font_size: v })}
+                className="!flex-1"
+              />
+              <span className="font-code-sm text-on-surface-variant w-10 text-right">
+                {settings.font_size}px
+              </span>
+            </div>
+          </Form.Item>
+        </Form>
+      </SectionCard>
+    </div>
+  );
+}
+
+// =================================================================
+// ============== 数据备份占位 (保留) ==============
+// =================================================================
+
+function BackupSettings() {
+  return (
+    <div className="flex-1 h-full overflow-y-auto p-8 flex flex-col gap-6">
+      <div>
+        <h1 className="text-headline-lg font-bold text-on-surface">数据与备份</h1>
+        <p className="text-body-md text-on-surface-variant mt-1">
+          导入导出、即时备份、清理 —— 计划在后续版本提供。
+        </p>
+      </div>
+      <div className="surface-card p-6 flex flex-col gap-4">
+        <div className="flex items-center gap-1 pb-3 border-b border-outline-variant/40">
+          <Settings size={20} className="text-primary" />
+          <h2 className="text-headline-sm font-semibold text-on-surface">路线图</h2>
+        </div>
+        <ul className="text-body-md text-on-surface-variant list-disc pl-5 space-y-1">
+          <li>JSON + Markdown + TXT 三种格式导出</li>
+          <li>同名格式反向导入（合并 / 覆盖两种模式）</li>
+          <li>定期快照与本地备份目录管理</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+// =================================================================
+// ============== 关于 (AboutSettings) ==============
+// =================================================================
+
+function AboutSettings() {
+  return (
+    <div className="flex-1 h-full overflow-y-auto p-8 flex flex-col gap-6">
+      <div>
+        <h1 className="text-headline-lg font-bold text-on-surface">关于织梦</h1>
+        <p className="text-body-md text-on-surface-variant mt-1">
+          AI 协同长篇小说创作平台 · 一人即一工作室
+        </p>
+      </div>
+
+      <SectionCard title="项目信息" icon={<Info size={20} className="text-primary" />}>
+        <Space direction="vertical" size="middle" className="!w-full">
+          <InfoRow label="项目代号" value="织梦 (ZhiMeng)" />
+          <InfoRow label="版本" value="v0.1.0-beta" />
+          <InfoRow label="Git 提交" value="main · latest" />
+          <InfoRow label="构建日期" value="2026-09" />
+        </Space>
+      </SectionCard>
+
+      <SectionCard title="技术栈" icon={<Settings size={20} className="text-primary" />}>
+        <div className="grid grid-cols-2 gap-3 text-body-md">
+          <InfoRow label="前端" value="React + Vite + TypeScript + Ant Design" />
+          <InfoRow label="后端" value="FastAPI + SQLAlchemy 2.0 + LangGraph" />
+          <InfoRow label="数据库" value="SQLite (aiosqlite)" />
+          <InfoRow label="向量记忆" value="chromadb + sentence-transformers (bge-small-zh-v1.5)" />
+          <InfoRow label="LLM 协议" value="OpenAI / Anthropic / Ollama / 自定义" />
+          <InfoRow label="Editor" value="TipTap (ProseMirror)" />
+        </div>
+      </SectionCard>
+
+      <SectionCard title="核心 Agent" icon={<Network size={20} className="text-primary" />}>
+        <div className="flex flex-wrap gap-2">
+          {AGENT_TYPES.map((a) => (
+            <Tag key={a.value} color="blue">{a.label}</Tag>
+          ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="许可" icon={<Info size={20} className="text-primary" />}>
+        <p className="text-body-md text-on-surface-variant">
+          本仓库采用 AGPL-3.0 开源协议。商业使用请联系作者授权。
+        </p>
+      </SectionCard>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-label-sm text-on-surface-variant w-20 flex-shrink-0">
+        {label}
+      </span>
+      <span className="font-code-sm text-on-surface">{value}</span>
+    </div>
+  );
+}
+
+// =================================================================
+// ============== 通用组件 ==============
+// =================================================================
+
+function SectionCard({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="surface-card p-6 flex flex-col gap-4">
+      <div className="flex items-center gap-1 pb-3 border-b border-outline-variant/40">
+        {icon}
+        <h2 className="text-headline-sm font-semibold text-on-surface">{title}</h2>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// =================================================================
+// ============== LLM API 配置 (保持原有实现) ==============
 // =================================================================
 
 const PROVIDER_MAP = new Map(PROVIDERS.map((p) => [p.value, p]));
@@ -203,7 +798,7 @@ function LLMSettings() {
     form.setFieldsValue({
       name: cfg.name,
       provider: cfg.provider,
-      api_key: '', // 编辑时不回填原 Key，留空表示不修改
+      api_key: '',
       base_url: cfg.base_url,
       model_name: cfg.model_name,
       enabled: cfg.enabled,
@@ -237,7 +832,6 @@ function LLMSettings() {
         agent_assignments: v.agent_assignments ?? [],
       };
       if (editing) {
-        // 编辑时 api_key 留空 → 后端保留原值
         if (!data.api_key) delete data.api_key;
         updateMutation.mutate({ id: editing.id, data });
       } else {
@@ -381,7 +975,6 @@ function ApiConfigForm({ form, isEdit }: { form: ReturnType<typeof Form.useForm>
         provider: string;
         base_url?: string;
       };
-      // 编辑模式下 api_key 留空表示不修改, 这种情况下不传 api_key, 由后端不强制要求
       let apiKey: string | undefined;
       if (!isEdit) {
         const keyField = (await form
@@ -414,7 +1007,7 @@ function ApiConfigForm({ form, isEdit }: { form: ReturnType<typeof Form.useForm>
         setFetching(false);
       }
     } catch {
-      /* 表单校验失败, 已有红字提示 */
+      /* 表单校验失败 */
     }
   };
 
@@ -430,7 +1023,6 @@ function ApiConfigForm({ form, isEdit }: { form: ReturnType<typeof Form.useForm>
           onChange={(v) => {
             const meta = providerMeta(v as string);
             form.setFieldValue('base_url', meta.defaultBaseUrl);
-            // 切换 Provider 时清空旧清单
             setModelOptions([]);
             setModelSource(null);
           }}
@@ -544,7 +1136,6 @@ function ApiConfigCard({
 
   return (
     <div className={`${cfg.enabled ? 'surface-card' : 'surface-card opacity-70'} p-5 flex flex-col gap-3`}>
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div
@@ -568,7 +1159,6 @@ function ApiConfigCard({
         </span>
       </div>
 
-      {/* Key */}
       <div className="flex items-center px-3 h-9 rounded-lg border border-outline-variant/50 bg-surface-container-lowest font-code-sm">
         <span className="flex-1 truncate text-on-surface">
           {revealedKey ?? cfg.masked_key ?? '(未设置)'}
@@ -582,14 +1172,12 @@ function ApiConfigCard({
         </button>
       </div>
 
-      {/* Base URL */}
       {cfg.base_url && (
         <div className="flex items-center px-3 h-9 rounded-lg border border-outline-variant/50 bg-surface-container-lowest font-code-sm text-on-surface-variant">
           <span className="truncate">{cfg.base_url}</span>
         </div>
       )}
 
-      {/* Agent 分配 */}
       {assignedAgents.length > 0 && (
         <div className="flex items-center gap-1 flex-wrap">
           <span className="text-label-sm text-on-surface-variant">分配给：</span>
@@ -601,7 +1189,6 @@ function ApiConfigCard({
         </div>
       )}
 
-      {/* 成本 & 上下文 */}
       <div className="grid grid-cols-3 gap-2 font-code-sm text-on-surface-variant">
         <div className="flex flex-col">
           <span className="text-label-sm">上下文</span>
@@ -617,7 +1204,6 @@ function ApiConfigCard({
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex items-center gap-2 mt-2 pt-3 border-t border-outline-variant/30">
         <Button
           size="small"

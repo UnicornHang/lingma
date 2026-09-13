@@ -88,3 +88,57 @@ export const apiConfigsApi = {
   listModels: (data: ProviderModelsRequest) =>
     http.post<ProviderModelsResponse>('/settings/api-configs/models', data),
 };
+
+// ====================== 应用全局设置（SettingsBundle）======================
+
+export interface SettingsBundle {
+  theme: 'light' | 'dark' | 'system';
+  language: string;
+  font_size: number;
+  auto_save_interval: number;
+  density: 'compact' | 'comfortable';
+  default_model: string | null;
+  active_preset: string | null;
+  default_target_word_count: number;
+}
+
+export type SettingsUpdate = Partial<SettingsBundle>;
+
+export const settingsApi = {
+  get: () => http.get<SettingsBundle>('/settings/'),
+  update: (data: SettingsUpdate) => http.patch<SettingsBundle>('/settings/', data),
+};
+
+// ====================== StylePreset 写作风格预设 ======================
+
+export interface StylePreset {
+  id: string;
+  name: string;
+  description: string | null;
+  style_keywords: string[];
+  target_audience: string[];
+  target_word_count: number;
+  is_builtin: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StylePresetCreate {
+  name: string;
+  description?: string;
+  style_keywords?: string[];
+  target_audience?: string[];
+  target_word_count?: number;
+}
+
+export type StylePresetUpdate = Partial<StylePresetCreate>;
+
+export const stylePresetsApi = {
+  list: () => http.get<StylePreset[]>('/settings/style-presets'),
+  create: (data: StylePresetCreate) =>
+    http.post<StylePreset>('/settings/style-presets', data),
+  update: (id: string, data: StylePresetUpdate) =>
+    http.patch<StylePreset>(`/settings/style-presets/${id}`, data),
+  delete: (id: string) =>
+    http.delete<void>(`/settings/style-presets/${id}`),
+};

@@ -15,8 +15,10 @@ class SettingsBundle(BaseModel):
     language: str = Field(default="zh-CN")
     font_size: int = Field(default=14, ge=10, le=24)
     auto_save_interval: int = Field(default=30, ge=5, le=600)
+    density: str = Field(default="comfortable", description="compact | comfortable")
     default_model: str | None = None
-    active_preset: str | None = None
+    active_preset: str | None = Field(None, description="StylePreset.name（默认预设名）")
+    default_target_word_count: int = Field(default=3000, ge=500, le=20000)
 
 
 class SettingsUpdate(BaseModel):
@@ -26,8 +28,53 @@ class SettingsUpdate(BaseModel):
     language: str | None = None
     font_size: int | None = Field(None, ge=10, le=24)
     auto_save_interval: int | None = Field(None, ge=5, le=600)
+    density: str | None = None
     default_model: str | None = None
     active_preset: str | None = None
+    default_target_word_count: int | None = Field(None, ge=500, le=20000)
+
+
+# ==================== StylePreset 写作风格预设 ====================
+
+
+class StylePresetCreate(BaseModel):
+    """新建风格预设"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    style_keywords: list[str] = Field(default_factory=list)
+    target_audience: list[str] = Field(default_factory=list)
+    target_word_count: int = Field(default=3000, ge=500, le=20000)
+
+
+class StylePresetUpdate(BaseModel):
+    """更新风格预设"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    style_keywords: list[str] | None = None
+    target_audience: list[str] | None = None
+    target_word_count: int | None = Field(None, ge=500, le=20000)
+
+
+class StylePresetRead(BaseModel):
+    """读取风格预设"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    description: str | None
+    style_keywords: list[str]
+    target_audience: list[str]
+    target_word_count: int
+    is_builtin: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 # ==================== API 配置 ====================

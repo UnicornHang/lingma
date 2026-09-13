@@ -1,13 +1,14 @@
-"""Setting 业务逻辑层（应用设置 + API 配置）"""
+"""Setting 业务逻辑层（应用设置 + API 配置 + StylePreset）"""
 from typing import Sequence
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.api_config import APIConfig, Provider
-from app.models.setting import Setting
+from app.models.setting import Setting, StylePreset
 from app.schemas.setting import (
     ApiConfigCreate,
     ApiConfigRead,
@@ -15,6 +16,8 @@ from app.schemas.setting import (
     ApiKeyReveal,
     SettingsBundle,
     SettingsUpdate,
+    StylePresetCreate,
+    StylePresetUpdate,
 )
 from app.services.crypto_service import decrypt, encrypt
 
@@ -60,6 +63,141 @@ async def update_settings(db: AsyncSession, payload: SettingsUpdate) -> Settings
 
     await db.flush()
     return current
+
+
+# ==================== StylePreset 写作风格预设 ====================
+
+
+# 启动时注入的 4 套内置预设(name 是自然主键,upsert 语义)
+_BUILTIN_PRESETS = [
+    {
+        "name": "默认基调",
+        "description": "系统默认,无明确风格偏好",
+        "style_keywords": [],
+        "target_audience": ["不限"],
+        "target_word_count": 3000,
+    },
+    {
+        "name": "仙侠玄幻",
+        "description": "修真世界,长篇热血,升级打怪",
+        "style_keywords": ["热血", "修仙", "升级", "宗门"],
+        "target_audience": ["男频"],
+        "target_word_count": 3500,
+    },
+    {
+        "name": "都市言情",
+        "description": "现代都市,情感细腻,人物刻画",
+        "style_keywords": ["细腻", "情感", "都市", "现实"],
+        "target_audience": ["女频"],
+        "target_word_count": 2500,
+    },
+    {
+        "name": "科幻硬核",
+        "description": "硬科幻,逻辑严谨,概念驱动",
+        "style_keywords": ["理性", "硬科幻", "概念", "逻辑"],
+        "target_audience": ["不限"],
+        "target_word_count": 3000,
+    },
+]
+
+
+async def ensure_builtin_presets(db: AsyncSession) -> None:
+    """启动时确保内置预设存在（idempotent upsert）。"""
+    for preset_data in _BUILTIN_PRESETS:
+        result = await db.execute(
+            select(StylePreset).where(StylePreset.name == preset_data["name"])
+        )
+        existing = result.scalar_one_or_none()
+        if existing is None:
+            db.add(StylePreset(is_builtin=True, **preset_data))
+        elif not existing.is_builtin:
+            # 用户曾用同名预设,标记为 builtin 并合并
+            existing.is_builtin = True
+            for k, v in preset_data.items():
+                setattr(existing, k, v)
+    await db.flush()
+
+
+async def list_style_presets(db: AsyncSession) -> Sequence[StylePreset]:
+    """列出所有风格预设(builtin 在前,然后按创建时间)。"""
+    result = await db.execute(
+        select(StylePreset).order_by(
+            StylePreset.is_builtin.desc(),
+            StylePreset.created_at.asc(),
+        )
+    )
+    return result.scalars().all()
+
+
+async def get_style_preset(db: AsyncSession, preset_id: UUID) -> StylePreset:
+    """获取单个预设。"""
+    result = await db.execute(
+        select(StylePreset).where(StylePreset.id == preset_id)
+    )
+    preset = result.scalar_one_or_none()
+    if not preset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"风格预设 {preset_id} 不存在",
+        )
+    return preset
+
+
+async def create_style_preset(
+    db: AsyncSession, payload: StylePresetCreate
+) -> StylePreset:
+    """新建风格预设。"""
+    preset = StylePreset(
+        name=payload.name,
+        description=payload.description,
+        style_keywords=payload.style_keywords,
+        target_audience=payload.target_audience,
+        target_word_count=payload.target_word_count,
+        is_builtin=False,
+    )
+    db.add(preset)
+    try:
+        await db.flush()
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"风格预设名 '{payload.name}' 已存在",
+        ) from e
+    await db.refresh(preset)
+    return preset
+
+
+async def update_style_preset(
+    db: AsyncSession, preset_id: UUID, payload: StylePresetUpdate
+) -> StylePreset:
+    """更新风格预设。"""
+    preset = await get_style_preset(db, preset_id)
+    data = payload.model_dump(exclude_unset=True)
+    for key, value in data.items():
+        setattr(preset, key, value)
+    try:
+        await db.flush()
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"风格预设名冲突",
+        ) from e
+    await db.refresh(preset)
+    return preset
+
+
+async def delete_style_preset(db: AsyncSession, preset_id: UUID) -> None:
+    """删除风格预设（builtin 不允许删）。"""
+    preset = await get_style_preset(db, preset_id)
+    if preset.is_builtin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="内置预设不可删除",
+        )
+    await db.delete(preset)
+    await db.flush()
 
 
 # ==================== API 配置 ====================
