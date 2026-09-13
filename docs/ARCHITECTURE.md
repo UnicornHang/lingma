@@ -1,8 +1,8 @@
-# LingMa 架构设计
+# ZhiMeng 架构设计
 
 > 版本 0.1.0 · 2026-09-10
 
-本文档描述灵码小说工坊（LingMa Novel Studio）的整体架构、模块边界、数据流与关键技术决策。开发人员应先读此文档，再读具体模块的需求文档。
+本文档描述织梦小说工坊（ZhiMeng Novel Studio）的整体架构、模块边界、数据流与关键技术决策。开发人员应先读此文档，再读具体模块的需求文档。
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## 1. 顶层架构
 
-LingMa 采用经典的 **前后端分离 + 本地一体化部署** 结构：
+ZhiMeng 采用经典的 **前后端分离 + 本地一体化部署** 结构：
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -320,9 +320,9 @@ Browser TipTap ──autosave──► /api/v1/chapters/{id} ──► SQL UPDAT
 ```
 Docker Compose:
 ┌─────────────────────────────────┐
-│  lingma-frontend (nginx:80)    │ ── 静态文件 + 反向代理
-│  lingma-backend (python:8000)   │ ── FastAPI
-│  lingma-data (volume)           │ ── SQLite + Chroma + 上传
+│  zhimeng-frontend (nginx:80)    │ ── 静态文件 + 反向代理
+│  zhimeng-backend (python:8000)   │ ── FastAPI
+│  zhimeng-data (volume)           │ ── SQLite + Chroma + 上传
 └─────────────────────────────────┘
 ```
 
@@ -338,7 +338,7 @@ Docker Compose:
 ```env
 APP_ENV=production
 APP_SECRET=<随机 32+ 字符串>
-DATABASE_URL=sqlite+aiosqlite:////app/data/works/lingma.db
+DATABASE_URL=sqlite+aiosqlite:////app/data/works/zhimeng.db
 VECTOR_STORE_PATH=/app/data/vector_store
 CORS_ORIGINS=["http://localhost:7860"]
 ```
@@ -348,7 +348,7 @@ CORS_ORIGINS=["http://localhost:7860"]
 ```
 data/
 ├── works/
-│   └── lingma.db           # SQLite 主库
+│   └── zhimeng.db           # SQLite 主库
 ├── vector_store/           # Chroma 持久化
 │   └── <work_id>/
 │       └── chroma.sqlite3

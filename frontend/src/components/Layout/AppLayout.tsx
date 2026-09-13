@@ -65,7 +65,7 @@ export function AppLayout() {
             </div>
             <div className="flex flex-col">
               <span className="text-headline-sm font-semibold tracking-tight text-on-surface">
-                灵码·LingMa
+                织梦·ZhiMeng
               </span>
               <span className="text-[10px] uppercase tracking-wider text-outline mt-0.5">
                 v0.2 本地版
@@ -222,8 +222,8 @@ function deriveBreadcrumb(pathname: string): string[] {
     'help': '使用文档',
   };
   const segments = pathname.split('/').filter(Boolean);
-  if (segments.length === 0) return ['灵码工作台', '启动页'];
-  const trail: string[] = ['灵码工作台'];
+  if (segments.length === 0) return ['织梦工作台', '启动页'];
+  const trail: string[] = ['织梦工作台'];
   let acc = '';
   for (const s of segments) {
     acc += '/' + s;

@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     workers: int = 2
 
     # ===== 数据库 =====
-    database_url: str = "sqlite+aiosqlite:////app/data/works/lingma.db"
+    database_url: str = "sqlite+aiosqlite:////app/data/works/zhimeng.db"
 
     @property
     def database_url_sync(self) -> str:

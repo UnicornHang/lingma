@@ -1,6 +1,6 @@
-# 灵码 (LingMa) — 前端开发需求文档
+# 织梦 (ZhiMeng) — 前端开发需求文档
 
-> 项目代号：**LingMa Novel Studio**
+> 项目代号：**ZhiMeng Novel Studio**
 > 文档版本：v1.0
 > 文档日期：2026-09-10
 > 适用模块：**前端应用（Frontend）**
@@ -36,7 +36,7 @@
 
 ### 1.1 前端定位
 
-LingMa 前端是用户与 AI 创作系统的唯一接触面，承担以下职责：
+ZhiMeng 前端是用户与 AI 创作系统的唯一接触面，承担以下职责：
 - **可视化呈现**：作品库、大纲树、富文本、AI 对话面板
 - **交互编排**：引导用户完成"创建作品 → 设定 → 大纲 → 章节"的完整流程
 - **实时反馈**：WebSocket 流式接收 AI 生成内容、审校批注
@@ -90,7 +90,7 @@ LingMa 前端是用户与 AI 创作系统的唯一接触面，承担以下职责
 
 ```json
 {
-  "name": "lingma-frontend",
+  "name": "zhimeng-frontend",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
@@ -340,7 +340,7 @@ export const router = createBrowserRouter([
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  顶栏 │LingMa Logo │ 全局搜索 │ 设置 │ 帮助 │ 用户菜单│
+│  顶栏 │ZhiMeng Logo │ 全局搜索 │ 设置 │ 帮助 │ 用户菜单│
 ├──────┼──────────────────────────────────────────────────┤
 │      │                                                  │
 │ 侧边 │  [页面内容]                                  │
@@ -471,7 +471,7 @@ export const useEditorStore = create<EditorState>()(
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  LingMa    🔍搜索[             ]   ⚙️设置  👤   📚文档│
+│  ZhiMeng    🔍搜索[             ]   ⚙️设置  👤   📚文档│
 ├─────────────────────────────────────────────────────────┤
 │  我的作品 (12)                                              │
 │  [全部] [玄幻] [都市] [言情] [历史] [科幻] [悬疑]            │
@@ -1349,7 +1349,7 @@ export const apiClient = axios.create({
 // 请求拦截器
 apiClient.interceptors.request.use((config) => {
   // 注入 token（如果有）
-  const token = localStorage.getItem('lingma_token');
+  const token = localStorage.getItem('zhimeng_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -1485,7 +1485,7 @@ i18n.use(initReactI18next).init({
     'zh-CN': { translation: zhCN },
     'en-US': { translation: enUS },
   },
-  lng: localStorage.getItem('lingma_lang') || 'zh-CN',
+  lng: localStorage.getItem('zhimeng_lang') || 'zh-CN',
   fallbackLng: 'zh-CN',
   interpolation: { escapeValue: false },
 });
@@ -1502,7 +1502,7 @@ export function useTheme() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem('lingma_theme', theme);
+    localStorage.setItem('zhimeng_theme', theme);
   }, [theme]);
 
   return theme;
@@ -1855,7 +1855,7 @@ server {
 ```yaml
 frontend:
   build: ./frontend
-  container_name: lingma-frontend
+  container_name: zhimeng-frontend
   ports:
     - "7860:80"
   depends_on:

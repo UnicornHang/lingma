@@ -1,8 +1,8 @@
 # 贡献指南
 
-> 欢迎来到 LingMa！本文档帮助你快速上手贡献流程。
+> 欢迎来到 ZhiMeng！本文档帮助你快速上手贡献流程。
 
-我们欢迎任何形式的贡献：代码、文档、Issue、创意。LingMa 是一个本地优先的 AI 小说创作工具，我们的目标是让每个写作者都能拥有自己的 AI 创作搭档。
+我们欢迎任何形式的贡献：代码、文档、Issue、创意。ZhiMeng 是一个本地优先的 AI 小说创作工具，我们的目标是让每个写作者都能拥有自己的 AI 创作搭档。
 
 ---
 
@@ -68,7 +68,7 @@
 ## 📁 项目结构速览
 
 ```
-lingma/
+zhimeng/
 ├── backend/              # Python 后端
 │   ├── app/
 │   │   ├── api/         # HTTP/WS 路由
@@ -331,7 +331,7 @@ npm run test:e2e      # E2E (Playwright)
 - Docker: [e.g. 4.18]
 - Python: [e.g. 3.11.5]
 - Node: [e.g. 20.10.0]
-- LingMa 版本: [e.g. v0.1.0]
+- ZhiMeng 版本: [e.g. v0.1.0]
 
 ## 日志 / 截图
 （如有）
@@ -356,13 +356,13 @@ npm run test:e2e      # E2E (Playwright)
 
 **请勿** 在公开 Issue 中报告安全漏洞。
 
-请发送邮件到 **security@lingma.io**，主题前缀 `[SECURITY]`。我们会在 48 小时内回复。
+请发送邮件到 **security@zhimeng.io**，主题前缀 `[SECURITY]`。我们会在 48 小时内回复。
 
 ---
 
 ## 📜 许可证
 
-LingMa 使用 **MIT License**。贡献的代码默认遵循同一许可证。
+ZhiMeng 使用 **MIT License**。贡献的代码默认遵循同一许可证。
 
 详见 [LICENSE](../LICENSE)。
 

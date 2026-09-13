@@ -1,4 +1,4 @@
-# 灵码 (LingMa) Novel Studio
+# 织梦 (ZhiMeng) Novel Studio
 
 > 一款零门槛、本地化、隐私安全的 AI 辅助小说创作平台
 
@@ -7,7 +7,7 @@
 [![React](https://img.shields.io/badge/react-18-blue.svg)](https://react.dev)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com)
 
-LingMa 是为小说作者、写作爱好者、技术创作者打造的 AI 写作协作平台。通过 6 个专业 Agent 的协作，提供从大纲、世界观、角色设计到章节生成、编辑润色、读者评审的完整创作工作流。
+ZhiMeng 是为小说作者、写作爱好者、技术创作者打造的 AI 写作协作平台。通过 6 个专业 Agent 的协作，提供从大纲、世界观、角色设计到章节生成、编辑润色、读者评审的完整创作工作流。
 
 **核心特点**：
 
@@ -32,8 +32,8 @@ LingMa 是为小说作者、写作爱好者、技术创作者打造的 AI 写作
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/UnicornHang/lingma.git
-cd lingma
+git clone https://github.com/UnicornHang/zhimeng.git
+cd zhimeng
 
 # 2. 复制环境变量模板
 cp .env.example .env
@@ -65,7 +65,7 @@ vim .env
 ## 项目结构
 
 ```
-lingma/
+zhimeng/
 ├── backend/                      # Python 后端 (FastAPI)
 │   ├── app/
 │   │   ├── api/                  # REST + WebSocket
@@ -170,4 +170,4 @@ lingma/
 
 ---
 
-**LingMa Team** · 让 AI 成为你的写作搭档，而不是替代者。
+**ZhiMeng Team** · 让 AI 成为你的写作搭档，而不是替代者。

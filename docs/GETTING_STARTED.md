@@ -1,8 +1,8 @@
-# LingMa 快速启动
+# ZhiMeng 快速启动
 
-> 5 分钟跑起来 LingMa 小说工坊
+> 5 分钟跑起来 ZhiMeng 小说工坊
 
-本指南将带你在 **5 分钟内** 完成 LingMa 的本地部署并跑通完整链路。如果遇到任何问题，请查阅 [TROUBLESHOOTING.md](TROUBLESHOOTING.md) 或提交 Issue。
+本指南将带你在 **5 分钟内** 完成 ZhiMeng 的本地部署并跑通完整链路。如果遇到任何问题，请查阅 [TROUBLESHOOTING.md](TROUBLESHOOTING.md) 或提交 Issue。
 
 ---
 
@@ -26,8 +26,8 @@
 ### 步骤 1：克隆并进入项目
 
 ```bash
-git clone <repo-url> lingma
-cd lingma
+git clone <repo-url> zhimeng
+cd zhimeng
 ```
 
 ### 步骤 2：复制环境变量模板
@@ -65,7 +65,7 @@ docker compose up -d
 
 打开浏览器：[http://localhost:7860](http://localhost:7860)
 
-看到 🎉 LingMa 首页 → **启动成功**！
+看到 🎉 ZhiMeng 首页 → **启动成功**！
 
 ### 步骤 5：停止
 
@@ -108,7 +108,7 @@ uvicorn app.main:app --reload --port 8000
 
 后端启动成功：
 ```
-INFO    | 🚀 LingMa Backend 启动中...
+INFO    | 🚀 ZhiMeng Backend 启动中...
 INFO    | ✅ 数据库初始化完成
 INFO    | ✅ 服务就绪，监听端口: 8000
 ```
@@ -141,7 +141,7 @@ npm run dev
 
 ### 步骤 3：验证联通
 
-1. 打开前端首页 → 应能看到"灵码 · LingMa"标题
+1. 打开前端首页 → 应能看到"织梦 · ZhiMeng"标题
 2. 点击"进入作品库" → 当前会显示"还没有作品"（预期行为）
 3. 打开浏览器 DevTools → Network → 应能看到 `/api/v1/settings/` 请求成功
 
@@ -193,7 +193,7 @@ alembic revision --autogenerate -m "add xxx"
 alembic upgrade head
 
 # 查看数据库
-sqlite3 data/works/lingma.db
+sqlite3 data/works/zhimeng.db
 ```
 
 ### 前端
@@ -266,7 +266,7 @@ ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
 A: 删除旧库后重启：
 ```bash
-rm data/works/lingma.db
+rm data/works/zhimeng.db
 docker compose restart backend
 ```
 
@@ -299,7 +299,7 @@ docker compose up -d
 
 - GitHub Issues: <repo-url>/issues
 - 文档站: [docs/](.)
-- 邮件: team@lingma.io
+- 邮件: team@zhimeng.io
 
 ---
 

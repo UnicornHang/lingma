@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, BookOpen, FileText, Shield, ShieldCheck } from 'lucide-react';
+import { ArrowRight, FileText, Shield, ShieldCheck } from 'lucide-react';
+import logo from '../images/logo.png';
 
 export default function HomePage() {
   return (
@@ -17,13 +18,13 @@ export default function HomePage() {
         {/* Logo with glow */}
         <div className="relative">
           <div className="absolute inset-0 rounded-3xl bg-primary/20 blur-2xl" />
-          <div className="relative h-24 w-24 rounded-3xl bg-primary flex items-center justify-center shadow-[0_8px_32px_rgba(5,150,105,0.35)]">
-            <BookOpen size={48} className="text-white" strokeWidth={1.5} />
+          <div className="relative h-24 w-24 rounded-3xl bg-white flex items-center justify-center shadow-[0_8px_32px_rgba(5,150,105,0.35)] overflow-hidden">
+            <img src={logo} alt="织梦 ZhiMeng" className="h-full w-full object-contain" />
           </div>
         </div>
 
-        <h1 className="text-display font-bold text-on-surface tracking-tight mt-8">
-          灵码 · LingMa
+        <h1 className="text-display font-bold tracking-tight mt-8 bg-gradient-to-r from-[#00685f] via-[#059669] to-[#10b981] bg-clip-text text-transparent">
+          织梦 · ZhiMeng
         </h1>
         <p className="text-body-lg text-on-surface-variant mt-2">
           你的本地 AI 小说创作搭档

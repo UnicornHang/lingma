@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================
-# LingMa 开发模式启动 —— 后端带 --reload
+# ZhiMeng 开发模式启动 —— 后端带 --reload
 # ============================================
 #
 # 与 scripts/start.sh(生产 Docker 模式)区别:
@@ -51,7 +51,7 @@ HOST="${BACKEND_HOST:-0.0.0.0}"
 
 echo ""
 echo "=========================================="
-echo "  🛠️  LingMa Backend (DEV, --reload)"
+echo "  🛠️  ZhiMeng Backend (DEV, --reload)"
 echo "=========================================="
 echo ""
 info "监听: http://${HOST}:${PORT}"

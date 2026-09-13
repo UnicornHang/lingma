@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "lingma-backend"
+name = "zhimeng-backend"
 version = "0.1.0"
-description = "LingMa Novel Studio Backend - AI Agent platform for novel creation"
-authors = ["LingMa Team <team@lingma.io>"]
+description = "ZhiMeng Novel Studio Backend - AI Agent platform for novel creation"
+authors = ["ZhiMeng Team <team@zhimeng.io>"]
 license = "MIT"
 readme = "README.md"
 packages = [{include = "app"}]

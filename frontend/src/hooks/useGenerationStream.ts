@@ -95,7 +95,7 @@ interface UseGenerationStreamReturn {
 }
 
 /**
- * LingMa 流式生成 Hook(StrictMode-safe)
+ * ZhiMeng 流式生成 Hook(StrictMode-safe)
  *
  * 协议：
  *  1. 连入 ws://<host>/ws/generation/{task_id}

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================
-# LingMa 启动脚本
+# ZhiMeng 启动脚本
 # ============================================
 
 set -e
@@ -20,7 +20,7 @@ error() { echo -e "${RED}❌ $1${NC}"; }
 
 echo ""
 echo "=========================================="
-echo "  🚀 LingMa Novel Studio"
+echo "  🚀 ZhiMeng Novel Studio"
 echo "=========================================="
 echo ""
 
@@ -91,14 +91,14 @@ info "等待服务启动..."
 sleep 5
 
 # 检查容器状态
-if docker compose ps | grep -q "lingma-backend.*Up"; then
+if docker compose ps | grep -q "zhimeng-backend.*Up"; then
     success "后端服务已启动"
 else
     error "后端服务启动失败，请查看日志: docker compose logs backend"
     exit 1
 fi
 
-if docker compose ps | grep -q "lingma-frontend.*Up"; then
+if docker compose ps | grep -q "zhimeng-frontend.*Up"; then
     success "前端服务已启动"
 else
     error "前端服务启动失败，请查看日志: docker compose logs frontend"
@@ -120,7 +120,7 @@ fi
 # ==================== 完成 ====================
 echo ""
 echo "=========================================="
-echo -e "  ${GREEN}✅ LingMa 启动成功！${NC}"
+echo -e "  ${GREEN}✅ ZhiMeng 启动成功！${NC}"
 echo "=========================================="
 echo ""
 echo -e "  📖 访问地址: ${GREEN}http://localhost:${FRONTEND_PORT}${NC}"

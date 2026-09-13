@@ -1,4 +1,4 @@
-# LingMa Frontend
+# ZhiMeng Frontend
 
 > React 18 + Vite + TypeScript + Ant Design 5 + TipTap
 

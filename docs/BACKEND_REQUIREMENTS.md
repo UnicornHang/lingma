@@ -1,6 +1,6 @@
-# 灵码 (LingMa) — 后端开发需求文档
+# 织梦 (ZhiMeng) — 后端开发需求文档
 
-> 项目代号：**LingMa Novel Studio**
+> 项目代号：**ZhiMeng Novel Studio**
 > 文档版本：v1.0
 > 文档日期：2026-09-10
 > 适用模块：**后端服务（Backend）**
@@ -35,7 +35,7 @@
 
 ### 1.1 后端定位
 
-LingMa 后端是整个系统的"大脑"，承担以下职责：
+ZhiMeng 后端是整个系统的"大脑"，承担以下职责：
 - **数据持久化**：作品、大纲、章节、人物、世界观等结构化数据存储
 - **业务编排**：6 个 AI Agent 的调度、上下文组装、状态管理
 - **LLM 路由**：对接多模型服务（OpenAI、Anthropic、DeepSeek、Qwen、Ollama 等）
@@ -106,10 +106,10 @@ LingMa 后端是整个系统的"大脑"，承担以下职责：
 
 ```toml
 [tool.poetry]
-name = "lingma-backend"
+name = "zhimeng-backend"
 version = "0.1.0"
-description = "LingMa Novel Studio Backend"
-authors = ["LingMa Team"]
+description = "ZhiMeng Novel Studio Backend"
+authors = ["ZhiMeng Team"]
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -2085,7 +2085,7 @@ def get_cipher():
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=b"lingma-salt",
+            salt=b"zhimeng-salt",
             iterations=480000,
         )
         key = base64.urlsafe_b64encode(kdf.derive(settings.app_secret.encode()))
@@ -2161,7 +2161,7 @@ APP_SECRET=change-me-to-random-32-chars-string
 LOG_LEVEL=INFO
 
 # ===== 数据库 =====
-DATABASE_URL=sqlite+aiosqlite:////app/data/works/lingma.db
+DATABASE_URL=sqlite+aiosqlite:////app/data/works/zhimeng.db
 
 # ===== 向量库 =====
 VECTOR_STORE_PATH=/app/data/vector_store
@@ -2196,7 +2196,7 @@ class Settings(BaseSettings):
     app_secret: str
     log_level: str = "INFO"
 
-    database_url: str = "sqlite+aiosqlite:////app/data/works/lingma.db"
+    database_url: str = "sqlite+aiosqlite:////app/data/works/zhimeng.db"
     vector_store_path: str = "/app/data/vector_store"
     embedding_model: str = "BAAI/bge-small-zh-v1.5"
 
@@ -2308,7 +2308,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--worker
 ```yaml
 backend:
   build: ./backend
-  container_name: lingma-backend
+  container_name: zhimeng-backend
   ports:
     - "8000:8000"
   volumes:
@@ -2317,7 +2317,7 @@ backend:
     - ./data/logs:/app/data/logs
     - ./backend/.env:/app/.env:ro
   environment:
-    - DATABASE_URL=sqlite+aiosqlite:////app/data/works/lingma.db
+    - DATABASE_URL=sqlite+aiosqlite:////app/data/works/zhimeng.db
     - VECTOR_STORE_PATH=/app/data/vector_store
   depends_on:
     - redis
@@ -2325,7 +2325,7 @@ backend:
 
 worker:
   build: ./backend
-  container_name: lingma-worker
+  container_name: zhimeng-worker
   command: arq app.workers.arq_settings.WorkerSettings
   volumes:
     - ./data/works:/app/data/works
@@ -2338,7 +2338,7 @@ worker:
 
 redis:
   image: redis:7-alpine
-  container_name: lingma-redis
+  container_name: zhimeng-redis
   volumes:
     - redis_data:/data
   restart: unless-stopped

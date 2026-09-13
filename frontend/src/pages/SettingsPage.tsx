@@ -48,7 +48,7 @@ const SUBNAV = [
   { to: '/settings/writing', icon: FileText, label: '写作偏好' },
   { to: '/settings/appearance', icon: Palette, label: '外观主题' },
   { to: '/settings/backup', icon: Database, label: '数据与备份' },
-  { to: '/settings/about', icon: Info, label: '关于灵码' },
+  { to: '/settings/about', icon: Info, label: '关于织梦' },
 ];
 
 function SubNav() {
@@ -117,7 +117,7 @@ function BackupSettings() {
   return <SettingsPlaceholder title="数据与备份" desc="查看本地数据占用、即时备份或恢复、清理不再需要的内容。" />;
 }
 function AboutSettings() {
-  return <SettingsPlaceholder title="关于灵码" desc="项目信息、技术栈、开源协议与社区入口。" />;
+  return <SettingsPlaceholder title="关于织梦" desc="项目信息、技术栈、开源协议与社区入口。" />;
 }
 
 // =================================================================

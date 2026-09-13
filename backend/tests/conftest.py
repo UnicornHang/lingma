@@ -6,7 +6,7 @@ os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault(
     "APP_SECRET", "test-secret-for-unit-tests-32chars-min-length-required-please"
 )
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./data/test_lingma.db")
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./data/test_zhimeng.db")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
 
 import asyncio
@@ -35,7 +35,7 @@ async def _setup_database():
     # 确保 data 目录存在
     Path("data").mkdir(exist_ok=True)
     # 删除旧测试库
-    db_file = Path("data/test_lingma.db")
+    db_file = Path("data/test_zhimeng.db")
     if db_file.exists():
         db_file.unlink()
 

@@ -1,4 +1,4 @@
-# LingMa API 参考
+# ZhiMeng API 参考
 
 > 完整的 REST + WebSocket API 文档
 >
@@ -86,7 +86,7 @@
 **响应**：
 ```json
 {
-  "name": "LingMa API",
+  "name": "ZhiMeng API",
   "version": "0.1.0",
   "docs": "/docs"
 }
@@ -663,4 +663,4 @@ setInterval(() => ws.send(JSON.stringify({ type: 'ping' })), 30000);
 
 ---
 
-> 📝 发现文档错误？[提交 Issue](https://github.com/your-org/lingma/issues)
+> 📝 发现文档错误？[提交 Issue](https://github.com/your-org/zhimeng/issues)

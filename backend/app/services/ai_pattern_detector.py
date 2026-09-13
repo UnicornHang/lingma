@@ -1,7 +1,7 @@
 """中文网文 AI 痕迹检测器。
 
 移植自 zenstory-ai/oh-story-claudecode 的 ``skills/story-long-write/scripts/check-ai-patterns.js``
-(2026-09 快照, v0.7.10)。仅保留对 LingMa 最有价值的 10 类高风险模式,覆盖:
+(2026-09 快照, v0.7.10)。仅保留对 ZhiMeng 最有价值的 10 类高风险模式,覆盖:
 
 - **blocking**(生成/润色必须改):
   - 否定+肯定翻转("不是 X,而是 Y" 同一句)

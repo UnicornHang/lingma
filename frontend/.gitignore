@@ -1,4 +1,4 @@
-# Frontend specific ignores (lingma-frontend)
+# Frontend specific ignores (zhimeng-frontend)
 # 根 .gitignore 已覆盖大部分规则,此处补充 frontend 特定项。
 
 # 依赖

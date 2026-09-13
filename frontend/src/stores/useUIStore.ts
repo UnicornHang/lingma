@@ -42,7 +42,7 @@ export const useUIStore = create<UIState>()(
         setGlobalLoading: (loading) => set({ globalLoading: loading }),
       }),
       {
-        name: 'lingma-ui-storage',
+        name: 'zhimeng-ui-storage',
         partialize: (state) => ({
           sidebarCollapsed: state.sidebarCollapsed,
           theme: state.theme,

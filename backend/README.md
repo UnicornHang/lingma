@@ -1,4 +1,4 @@
-# LingMa Backend
+# ZhiMeng Backend
 
 > Python 后端服务 - FastAPI + SQLAlchemy + LangGraph
 

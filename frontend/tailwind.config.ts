@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-// LingMa 设计系统 - Fresh Emerald Studio (翡翠版)
+// ZhiMeng 设计系统 - Fresh Emerald Studio (翡翠版)
 // 主色: Teal #0D9488 / Emerald #059669 / Sky #0284C7
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],

@@ -1,5 +1,5 @@
 # ============================================================
-# LingMa Novel Studio - Root .gitignore
+# ZhiMeng Novel Studio - Root .gitignore
 # ============================================================
 # 依赖库、构建产物、运行时数据、IDE 配置、临时文件等不提交。
 # 锁文件 (poetry.lock / package-lock.json) 应当提交以保证可复现构建。

@@ -1,4 +1,4 @@
-# LingMa Frontend Dockerfile
+# ZhiMeng Frontend Dockerfile
 # Multi-stage build: Node for build, Nginx for serving
 
 # ==================== Stage 1: Build ====================

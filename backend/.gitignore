@@ -1,4 +1,4 @@
-# Backend specific ignores (lingma-backend)
+# Backend specific ignores (zhimeng-backend)
 # 根 .gitignore 已覆盖大部分规则,此处补充 backend 特定项。
 
 # 虚拟环境

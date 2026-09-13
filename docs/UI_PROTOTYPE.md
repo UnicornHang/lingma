@@ -1,13 +1,13 @@
-# LingMa UI 原型清单（UI Prototype Inventory）
+# ZhiMeng UI 原型清单（UI Prototype Inventory）
 
-> 版本 0.3 · 2026-09-12 · **基于 stitch_lingma_novel_studio v0.2 设计参考重构**
+> 版本 0.3 · 2026-09-12 · **基于 stitch_zhimeng_novel_studio v0.2 设计参考重构**
 > 维护者：前端 / 设计协作
 
-本文档统一登记 LingMa 全部 UI 页面的**画布尺寸、布局分区、内容清单、组件清单与状态**，作为设计与开发的"单一事实来源"。
+本文档统一登记 ZhiMeng 全部 UI 页面的**画布尺寸、布局分区、内容清单、组件清单与状态**，作为设计与开发的"单一事实来源"。
 
 **标准画布**：1920 × 1080（桌面端，不做移动端 — PRD 已声明 out-of-scope）
-**设计参考源**：[stitch_lingma_novel_studio](../stitch_lingma_novel_studio/) 4 个 v0.2 高保真 HTML mockup
-**设计系统规范**：[precision_workspace/DESIGN.md](../stitch_lingma_novel_studio/precision_workspace/DESIGN.md)
+**设计参考源**：[stitch_zhimeng_novel_studio](../stitch_zhimeng_novel_studio/) 4 个 v0.2 高保真 HTML mockup
+**设计系统规范**：[precision_workspace/DESIGN.md](../stitch_zhimeng_novel_studio/precision_workspace/DESIGN.md)
 
 ---
 
@@ -225,7 +225,7 @@
 
 | 区域 | 位置 (x, y) | 尺寸 (w, h) | 内容 |
 |------|-------------|-------------|------|
-| 品牌区 | 0, 0 | 240 × 80 | Logo 图标（40×40 radius 12 shadow-sm） + 「灵码·LingMa」+ `v0.2 本地版` 徽章 |
+| 品牌区 | 0, 0 | 240 × 80 | Logo 图标（40×40 radius 12 shadow-sm） + 「织梦·ZhiMeng」+ `v0.2 本地版` 徽章 |
 | 当前作品卡 | 24, 104 | 192 × 60 | 标题「当前作品」+ 作品名 + 字数 chip + 📖 图标 |
 | 创作空间组 | 24, 196 | 192 × var | 「创作空间」分组 + 3 项（作品库 / 新建向导 / 章节编辑） |
 | 作品设定组 | 24, var | 192 × var | 「作品设定」分组 + 3 项（大纲架构 / 角色档案 / 世界观圣经） |
@@ -246,7 +246,7 @@
 
 | 子区 | 位置 (x, y) | 尺寸 (w, h) | 内容 |
 |------|-------------|-------------|------|
-| 面包屑 | 32, 0 | auto × 64 | 「灵码工作台 / 工作区」（层级用 `/` 分隔）|
+| 面包屑 | 32, 0 | auto × 64 | 「织梦工作台 / 工作区」（层级用 `/` 分隔）|
 | 状态徽章 | 200, 20 | auto × 24 | pill `bg surface-container` + 「本地离线 (SQLite + Chroma)」+ 🟢 图标 |
 | 搜索框 | 居中 | 720 × 36 | 🔍 + 「搜索作品、章节、角色或设定 (Cmd+K)」（h-9 bg `surface-container-low`） |
 | 本月推理 | 右 200 | auto × 32 | 「本月推理: ¥42.60 节省 92%」chip |
@@ -270,7 +270,7 @@
 ### 4.1 全局 NavRail 树
 
 ```
-灵码·LingMa (Logo)
+织梦·ZhiMeng (Logo)
 ├── 当前作品 (卡) — 剑来·前传 · 35.2万字 · 📖
 ├── ────────
 ├── 创作空间
@@ -299,7 +299,7 @@ Settings 页采用二级 NavRail 右侧的二级 tab：
 ├── 写作偏好
 ├── 外观主题
 ├── 数据与备份
-└── 关于灵码
+└── 关于织梦
 ```
 
 ### 4.3 路由表
@@ -360,7 +360,7 @@ Settings 页采用二级 NavRail 右侧的二级 tab：
 |------|------|------|------|
 | 渐变背景 | 240, 64 | 1680 × 1016 | `surface-container-low` → 中心 radial `primary-container/30` |
 | Logo 大图标 | 居中, 280 | 96 × 96 | 主色渐变方块，radius 24，shadow lg |
-| 产品名 | 居中, 410 | auto | 「灵码 · LingMa」display 32 |
+| 产品名 | 居中, 410 | auto | 「织梦 · ZhiMeng」display 32 |
 | 副标题 | 居中, 460 | auto | 「你的本地 AI 小说创作搭档」body-lg 16 |
 | 主 CTA | 居中, 520 | 200 × 48 | 「进入作品库 →」primary lg |
 | 次级 CTA | 居中, 580 | auto | 「查看文档」ghost |
@@ -396,7 +396,7 @@ Settings 页采用二级 NavRail 右侧的二级 tab：
 | 区域 | 位置 (x, y) | 尺寸 (w, h) | 内容 |
 |------|-------------|-------------|------|
 | NavRail | 0, 0 | 240 × 1080 | 全局侧栏（激活「作品库」） |
-| Header | 240, 0 | 1680 × 64 | 全局顶栏（面包屑 「灵码工作台 / 工作区」） |
+| Header | 240, 0 | 1680 × 64 | 全局顶栏（面包屑 「织梦工作台 / 工作区」） |
 | Content | 240, 64 | 1680 × 1016 | 见下 |
 
 #### Content 内分区
@@ -424,7 +424,7 @@ Settings 页采用二级 NavRail 右侧的二级 tab：
 
 | 内容 |
 |------|
-| 🗄 SQLite DB: `/data/works/lingma.db` 24.8 MB  ·  ✨ Chroma 向量库: 18,920 节点正常  ·  · 🟢 本地自动增量快照 10 分钟前完成  · 完整存储拓扑 → |
+| 🗄 SQLite DB: `/data/works/zhimeng.db` 24.8 MB  ·  ✨ Chroma 向量库: 18,920 节点正常  ·  · 🟢 本地自动增量快照 10 分钟前完成  · 完整存储拓扑 → |
 
 #### 组件清单
 - [NavRail] [GlobalHeader]
@@ -463,7 +463,7 @@ Settings 页采用二级 NavRail 右侧的二级 tab：
 | Backdrop | 0, 0 | 1920 × 1080 | `rgba(31,35,48,0.35)` scrim |
 | Modal 外框 | 454, 96 | 1012 × 888 | radius 12，shadow L3 |
 | Modal Header | 0, 0 | 1012 × 100 | 「创建新作品」headline-lg + 「New Work Wizard」+ 「Step 2 of 4」chip + ✕ 关闭 |
-| Modal 副文 | 32, 76 | 948 × 24 | 「只需 4 步，LingMa 协作 Agent 将为你构建完整的世界观底层、高维角色与第一卷纲。」body-sm |
+| Modal 副文 | 32, 76 | 948 × 24 | 「只需 4 步，ZhiMeng 协作 Agent 将为你构建完整的世界观底层、高维角色与第一卷纲。」body-sm |
 | Stepper | 32, 110 | 948 × 32 | 4 节点：✅1 基本信息 / 2 风格与受众 (active) / 3 目标设定 / 4 确认创建 |
 | Modal Body | 32, 160 | 948 × 580 | 滚动区 |
 | Modal Footer | 0, 740 | 1012 × 148 | 底部操作行 |
@@ -647,7 +647,7 @@ Settings 页采用二级 NavRail 右侧的二级 tab：
 | 3 | ✏ 写作偏好 | — | — |
 | 4 | 🎨 外观主题 | — | — |
 | 5 | 💾 数据与备份 | SQLite | — |
-| 6 | ⓘ 关于灵码 | — | — |
+| 6 | ⓘ 关于织梦 | — | — |
 
 #### Content 内分区
 
@@ -958,9 +958,9 @@ Settings 页采用二级 NavRail 右侧的二级 tab：
 ## 7. Figma 文件结构
 
 ```
-LingMa UI Mockups (fileKey: 3KeVqfxy14BQja5JBx5UgM)
+ZhiMeng UI Mockups (fileKey: 3KeVqfxy14BQja5JBx5UgM)
 ├── Page 1: 全局
-│   ├── Design Tokens (ColorCollection "LingMa Colors" — 19 vars)
+│   ├── Design Tokens (ColorCollection "ZhiMeng Colors" — 19 vars)
 │   └── Components (待沉淀：Button / Card / Tag / Input ...)
 ├── Frame: 作品库页 - Works List          (D2 ✅ 基于 v0.2 设计)
 ├── Frame: 章节编辑页 - Chapter Editor    (D3 ✅ 基于 v0.2 设计)
@@ -989,7 +989,7 @@ LingMa UI Mockups (fileKey: 3KeVqfxy14BQja5JBx5UgM)
 | D3 章节编辑页 | `2:170` |
 | D4 新建作品引导 | `7:2` |
 | D5 设置页 | （待更新至 v0.2 设计） |
-| ColorCollection "LingMa Colors" | `VariableCollectionId:1:1` |
+| ColorCollection "ZhiMeng Colors" | `VariableCollectionId:1:1` |
 | primary 变量 | `VariableID:1:3` |
 
 ---
@@ -1031,8 +1031,8 @@ LingMa UI Mockups (fileKey: 3KeVqfxy14BQja5JBx5UgM)
 - [GETTING_STARTED.md](GETTING_STARTED.md) — 启动文档
 - [CONTRIBUTING.md](CONTRIBUTING.md) — 贡献指南
 - [FRONTEND_REQUIREMENTS.md](FRONTEND_REQUIREMENTS.md) — 前端需求
-- [stitch_lingma_novel_studio/](../stitch_lingma_novel_studio/) — v0.2 设计参考（4 个高保真 HTML）
-- [stitch_lingma_novel_studio/precision_workspace/DESIGN.md](../stitch_lingma_novel_studio/precision_workspace/DESIGN.md) — 设计系统规范
+- [stitch_zhimeng_novel_studio/](../stitch_zhimeng_novel_studio/) — v0.2 设计参考（4 个高保真 HTML）
+- [stitch_zhimeng_novel_studio/precision_workspace/DESIGN.md](../stitch_zhimeng_novel_studio/precision_workspace/DESIGN.md) — 设计系统规范
 
 ## 附录 C：变更日志
 
@@ -1040,4 +1040,4 @@ LingMa UI Mockups (fileKey: 3KeVqfxy14BQja5JBx5UgM)
 |------|------|------|
 | 0.1 | 2026-09-11 | 初稿，登记 17 个页面，1440×900 画布 |
 | 0.2 | 2026-09-11 | 统一画布至 1920×1080，补充每个页面的布局分区表与组件清单 |
-| **0.3** | **2026-09-12** | **基于 stitch_lingma_novel_studio v0.2 设计参考全面重构：M3 色板、Material Design 字体体系、NavRail + GlobalHeader 全局布局壳、P0-4 三栏（300+880+460）、P0-5 ApiConfigCard 完整规格、P1-P3 全部 spec 补齐** |
+| **0.3** | **2026-09-12** | **基于 stitch_zhimeng_novel_studio v0.2 设计参考全面重构：M3 色板、Material Design 字体体系、NavRail + GlobalHeader 全局布局壳、P0-4 三栏（300+880+460）、P0-5 ApiConfigCard 完整规格、P1-P3 全部 spec 补齐** |

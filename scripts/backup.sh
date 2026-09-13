@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================
-# LingMa 数据备份脚本
+# ZhiMeng 数据备份脚本
 # ============================================
 
 set -e
@@ -21,10 +21,10 @@ mkdir -p "$BACKUP_DIR"
 
 # 生成时间戳
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_NAME="lingma_${TIMESTAMP}.tar.gz"
+BACKUP_NAME="zhimeng_${TIMESTAMP}.tar.gz"
 BACKUP_PATH="$BACKUP_DIR/$BACKUP_NAME"
 
-echo -e "${BLUE}📦 备份 LingMa 数据...${NC}"
+echo -e "${BLUE}📦 备份 ZhiMeng 数据...${NC}"
 echo "目标: $BACKUP_PATH"
 
 # 备份关键数据

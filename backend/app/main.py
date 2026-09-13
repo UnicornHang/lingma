@@ -1,4 +1,4 @@
-"""LingMa Backend - FastAPI 应用入口"""
+"""ZhiMeng Backend - FastAPI 应用入口"""
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动
-    logger.info("🚀 LingMa Backend 启动中...")
+    logger.info("🚀 ZhiMeng Backend 启动中...")
     logger.info(f"环境: {settings.app_env}")
     logger.info(f"日志级别: {settings.log_level}")
 
@@ -42,15 +42,15 @@ async def lifespan(app: FastAPI):
     yield
 
     # 关闭
-    logger.info("🛑 LingMa Backend 关闭中...")
+    logger.info("🛑 ZhiMeng Backend 关闭中...")
     await close_db()
     logger.info("✅ 资源清理完成")
 
 
 # 创建 FastAPI 应用
 app = FastAPI(
-    title="LingMa API",
-    description="灵码小说 AI Agent 平台 - 后端 API",
+    title="ZhiMeng API",
+    description="织梦小说 AI Agent 平台 - 后端 API",
     version="0.1.0",
     docs_url="/docs" if settings.app_env == "development" else None,
     redoc_url="/redoc" if settings.app_env == "development" else None,
@@ -94,7 +94,7 @@ async def global_exception_handler(request, exc):
 @app.get("/")
 async def root():
     return {
-        "name": "LingMa API",
+        "name": "ZhiMeng API",
         "version": "0.1.0",
         "docs": "/docs" if settings.app_env == "development" else "disabled",
     }

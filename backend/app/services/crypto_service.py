@@ -6,7 +6,7 @@ import base64
 
 from app.config import settings
 
-_SALT = b"lingma-salt-v1"
+_SALT = b"zhimeng-salt-v1"
 _cipher: Fernet | None = None
 
 

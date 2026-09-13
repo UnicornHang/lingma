@@ -1,6 +1,6 @@
-# 灵码 (LingMa) 小说 AI Agent 平台 — 产品需求文档 (PRD)
+# 织梦 (ZhiMeng) 小说 AI Agent 平台 — 产品需求文档 (PRD)
 
-> 项目代号：**LingMa Novel Studio**
+> 项目代号：**ZhiMeng Novel Studio**
 > 文档版本：v1.0
 > 文档日期：2026-09-10
 > 文档状态：待评审
@@ -32,7 +32,7 @@
 
 ### 1.1 项目名称
 
-**LingMa Novel Studio**（灵码·小说工坊）
+**ZhiMeng Novel Studio**（织梦·小说工坊）
 
 ### 1.2 项目愿景
 
@@ -92,7 +92,7 @@
 > 王老师是某平台签约作者，日更 8000 字。他需要在 3 小时内完成一章存稿，要求"主角不动主线、只推进支线、配角有血有肉"。
 
 **使用流程**：
-1. 打开 LingMa → 选择作品《剑来·前传》
+1. 打开 ZhiMeng → 选择作品《剑来·前传》
 2. 点击「续写」→ 输入「支线推进，配角云浩出场」→ 选择「玄幻仙侠」风格
 3. Writer Agent 自动调用 Character Agent 检索"云浩"过往言行
 4. 30 秒内生成 2000 字初稿，王老师在编辑器中精修
@@ -130,7 +130,7 @@
 
 ### 3.2 价值主张 vs 竞品
 
-| 维度 | 通用 ChatGPT | 在线 AI 写作 SaaS | **LingMa** |
+| 维度 | 通用 ChatGPT | 在线 AI 写作 SaaS | **ZhiMeng** |
 |------|--------------|------------------|------------|
 | 数据隐私 | ❌ 上传云端 | ❌ 上传云端 | ✅ 完全本地 |
 | 长期一致性 | ⚠️ 弱 | ⚠️ 中 | ✅ 强（向量库） |
@@ -151,7 +151,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  LingMa 功能架构                                     │
+│  ZhiMeng 功能架构                                     │
 ├─────────────────────────────────────────────────────┤
 │                                                     │
 │  L1 - 作品层                                        │
@@ -834,7 +834,7 @@ template:
 ### 6.3 目录结构
 
 ```
-lingma/
+zhimeng/
 ├── docker-compose.yml
 ├── docker-compose.override.yml   # 可选：本地模型
 ├── .env.example
@@ -1298,7 +1298,7 @@ type WSCommand =
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  LingMa        🔍搜索  ⚙️设置  👤用户  📚文档                │
+│  ZhiMeng        🔍搜索  ⚙️设置  👤用户  📚文档                │
 ├─────────────────────────────────────────────────────────────┤
 │  我的作品 (12)                                              │
 │  [全部] [玄幻] [都市] [言情] [历史] [科幻] [悬疑]            │
@@ -1408,7 +1408,7 @@ version: '3.8'
 services:
   backend:
     build: ./backend
-    container_name: lingma-backend
+    container_name: zhimeng-backend
     ports:
       - "8000:8000"
     volumes:
@@ -1417,13 +1417,13 @@ services:
       - ./data/logs:/app/data/logs
       - ./backend/.env:/app/.env:ro
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:////app/data/works/lingma.db
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/works/zhimeng.db
       - VECTOR_STORE_PATH=/app/data/vector_store
     restart: unless-stopped
 
   frontend:
     build: ./frontend
-    container_name: lingma-frontend
+    container_name: zhimeng-frontend
     ports:
       - "7860:80"
     depends_on:
@@ -1433,7 +1433,7 @@ services:
   # 可选：本地 LLM（用户有 GPU 时启用）
   ollama:
     image: ollama/ollama:latest
-    container_name: lingma-ollama
+    container_name: zhimeng-ollama
     profiles: ["local-llm"]
     ports:
       - "11434:11434"
@@ -1457,7 +1457,7 @@ volumes:
 #!/bin/bash
 set -e
 
-echo "🚀 LingMa 启动中..."
+echo "🚀 ZhiMeng 启动中..."
 
 # 检查 Docker
 if ! command -v docker &> /dev/null; then
@@ -1477,7 +1477,7 @@ fi
 # 启动
 docker compose up -d --build
 
-echo "✅ LingMa 已启动！"
+echo "✅ ZhiMeng 已启动！"
 echo "📖 访问: http://localhost:7860"
 echo "📚 文档: docs/getting-started.md"
 ```
@@ -1491,7 +1491,7 @@ APP_SECRET=change-me-to-random-string
 LOG_LEVEL=INFO
 
 # ===== 数据库 =====
-DATABASE_URL=sqlite+aiosqlite:////app/data/works/lingma.db
+DATABASE_URL=sqlite+aiosqlite:////app/data/works/zhimeng.db
 
 # ===== 向量库 =====
 VECTOR_STORE_PATH=/app/data/vector_store
@@ -1532,13 +1532,13 @@ FRONTEND_PORT=7860
 
 ```bash
 ./scripts/backup.sh
-# 输出 ./backups/lingma_20260910_140000.tar.gz
+# 输出 ./backups/zhimeng_20260910_140000.tar.gz
 ```
 
 **数据恢复**：
 
 ```bash
-./scripts/restore.sh ./backups/lingma_xxx.tar.gz
+./scripts/restore.sh ./backups/zhimeng_xxx.tar.gz
 ```
 
 **升级**：
@@ -1838,7 +1838,7 @@ v0.1 (MVP)        v0.5 (Beta)               v1.0 (GA)
 
 | 版本 | 日期 | 变更 | 作者 |
 |------|------|------|------|
-| v1.0 | 2026-09-10 | 初版 | LingMa Team |
+| v1.0 | 2026-09-10 | 初版 | ZhiMeng Team |
 
 ---
 

@@ -1,4 +1,4 @@
-# LingMa Backend Dockerfile
+# ZhiMeng Backend Dockerfile
 # Multi-stage build for smaller image size
 
 # ==================== Stage 1: Builder ====================
@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
-RUN groupadd -r lingma && useradd -r -g lingma lingma
+RUN groupadd -r zhimeng && useradd -r -g zhimeng zhimeng
 
 # Copy Python packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
@@ -45,10 +45,10 @@ COPY ./alembic.ini ./alembic.ini
 
 # Create data directories
 RUN mkdir -p /app/data/works /app/data/vector_store /app/data/logs \
-    && chown -R lingma:lingma /app
+    && chown -R zhimeng:zhimeng /app
 
 # Switch to non-root user
-USER lingma
+USER zhimeng
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
