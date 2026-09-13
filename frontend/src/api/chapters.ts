@@ -125,6 +125,10 @@ export const chaptersApi = {
   listVersions: (chapterId: string) =>
     http.get<{ total: number; items: ChapterVersion[] }>(`/chapters/${chapterId}/versions`),
 
+  /** [P3.2] 章节 Critic 评审历史(按 created_at ASC) —— 趋势图用 */
+  listEvaluations: (chapterId: string) =>
+    http.get<CriticEvaluationListItem[]>(`/chapters/${chapterId}/evaluations`),
+
   // ----- Editor Agent: AI 痕迹检测 / 去味 -----
   analyzeAIPatterns: (text: string) =>
     http.post<AnalyzeAIPatternsResponse>('/chapters/analyze-ai-patterns', { text }),
@@ -294,6 +298,20 @@ export interface CriticSummary {
   model_used: string;
   /** critic_evaluations.id,前端留 P3 用于"查看历史" */
   evaluation_id?: string | null;
+}
+
+// ============ [P3.2] Critic 评审历史(趋势图用) ============
+
+export interface CriticEvaluationListItem {
+  id: string;
+  version_no: number;
+  overall: number;
+  consistency: number;
+  pacing: number;
+  prose: number;
+  engagement: number;
+  created_at: string;
+  model_used: string;
 }
 
 // ============ SSE 流式去味事件 payload ============

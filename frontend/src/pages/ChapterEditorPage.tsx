@@ -28,6 +28,7 @@ import {
   type PolishRewrite,
   type CriticSummary,
 } from '@/api/chapters';
+import { CriticTrendChart } from '@/components/Charts/CriticTrendChart';
 import { outlineApi, type OutlineTreeNode } from '@/api/outline';
 import { useGenerationStream } from '@/hooks/useGenerationStream';
 import { RichEditor, type RichEditorHandle } from '@/components/RichEditor';
@@ -622,6 +623,15 @@ export default function ChapterEditorPage() {
   });
   const versions = versionsQuery.data?.items ?? [];
 
+  // [P3.2] Critic 评分历史(趋势图)—— 在版本 Modal 内嵌
+  const evaluationsQuery = useQuery({
+    queryKey: ['chapter-evaluations', chapterId],
+    queryFn: () => chaptersApi.listEvaluations(chapterId!),
+    enabled: !!chapterId && versionModalOpen,  // 仅 Modal 打开时才请求,避免无谓加载
+    refetchOnWindowFocus: false,
+    staleTime: 30_000,
+  });
+
   // "当前版本" = 当前 chapter 的 plain_content,版本号 = chapter.version
   // 历史版本从 versionsQuery 拿
   type VersionRow =
@@ -1169,6 +1179,24 @@ export default function ChapterEditorPage() {
                 </>
               )}
             </div>
+            {/* [P3.2] Critic 评分趋势 —— 仅当章节有评审时显示(否则隐藏在折叠区) */}
+            {(evaluationsQuery.data?.length ?? 0) > 0 && (
+              <details className="surface-card p-3" open>
+                <summary className="cursor-pointer text-body-sm text-on-surface-variant flex items-center gap-2">
+                  <span>Critic 评分趋势</span>
+                  <span className="text-body-xs">
+                    ({evaluationsQuery.data?.length ?? 0} 条)
+                  </span>
+                </summary>
+                <div className="mt-3">
+                  <CriticTrendChart
+                    evaluations={evaluationsQuery.data}
+                    isLoading={evaluationsQuery.isLoading}
+                    isError={evaluationsQuery.isError}
+                  />
+                </div>
+              </details>
+            )}
             {activeVersion.prompt_used && (
               <details className="surface-card p-3">
                 <summary className="cursor-pointer text-body-sm text-on-surface-variant">
