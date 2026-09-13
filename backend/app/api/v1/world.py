@@ -4,11 +4,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.world_agent import WorldAgent
 from app.deps import get_db
 from app.schemas.world import (
     WorldBibleCreate,
     WorldBibleRead,
     WorldBibleUpdate,
+    WorldSuggestRequest,
+    WorldSuggestResponse,
 )
 from app.services import world_service
 
@@ -18,7 +21,7 @@ router = APIRouter()
 @router.get(
     "/works/{work_id}/world",
     response_model=WorldBibleRead,
-    summary="获取/初始化作品的世界书（无则自动创建空记录）",
+    summary="获取/初始化作品的世界书(无则自动创建空记录)",
 )
 async def get_world_bible_endpoint(
     work_id: UUID,
@@ -33,7 +36,7 @@ async def get_world_bible_endpoint(
     "/world",
     response_model=WorldBibleRead,
     status_code=status.HTTP_201_CREATED,
-    summary="显式创建作品的世界书（已存在则 409）",
+    summary="显式创建作品的世界书(已存在则 409)",
 )
 async def create_world_bible_endpoint(
     payload: WorldBibleCreate,
@@ -48,7 +51,7 @@ async def create_world_bible_endpoint(
 @router.patch(
     "/works/{work_id}/world",
     response_model=WorldBibleRead,
-    summary="部分更新世界书（不存在则自动创建）",
+    summary="部分更新世界书(不存在则自动创建)",
 )
 async def update_world_bible_endpoint(
     work_id: UUID,
@@ -59,3 +62,26 @@ async def update_world_bible_endpoint(
     await db.commit()
     await db.refresh(bible)
     return WorldBibleRead.model_validate(bible)
+
+
+@router.post(
+    "/world/ai-suggest",
+    response_model=WorldSuggestResponse,
+    summary="AI 推荐世界书 6 维度(不强写入 DB;前端按需合并)",
+)
+async def ai_suggest_world(
+    payload: WorldSuggestRequest,
+    db: AsyncSession = Depends(get_db),
+) -> WorldSuggestResponse:
+    agent = WorldAgent()
+    suggestion, model_used, raw = await agent.suggest(
+        db,
+        work_id=payload.work_id,
+        focus_dimension=payload.focus_dimension,
+        extra_hint=payload.extra_hint,
+    )
+    return WorldSuggestResponse(
+        suggestion=suggestion,
+        model_used=model_used,
+        raw_content=raw,
+    )

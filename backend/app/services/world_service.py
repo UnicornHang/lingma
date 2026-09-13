@@ -1,4 +1,5 @@
 """World bible 业务逻辑层"""
+import logging
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -7,6 +8,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.world import WorldBible
 from app.schemas.world import WorldBibleCreate, WorldBibleUpdate
+from app.services.rag_service import get_rag_service
+
+logger = logging.getLogger(__name__)
+
+
+async def _try_index_world(db: AsyncSession, bible: WorldBible) -> None:
+    """RAG 索引世界书(失败仅 log,不阻塞业务)。"""
+    try:
+        n = await get_rag_service().index_world(db, bible)
+        if n > 0:
+            logger.info("RAG 索引世界书: work=%s, chunks=%d", bible.work_id, n)
+    except Exception as e:  # pragma: no cover - 防御
+        logger.warning("RAG 索引世界书失败(已降级): %s", e)
 
 
 async def get_or_create_world_bible(db: AsyncSession, work_id: UUID) -> WorldBible:
@@ -45,6 +59,7 @@ async def create_world_bible(db: AsyncSession, payload: WorldBibleCreate) -> Wor
     db.add(bible)
     await db.flush()
     await db.refresh(bible)
+    await _try_index_world(db, bible)
     return bible
 
 
@@ -57,4 +72,5 @@ async def update_world_bible(
         setattr(bible, key, value)
     await db.flush()
     await db.refresh(bible)
+    await _try_index_world(db, bible)
     return bible

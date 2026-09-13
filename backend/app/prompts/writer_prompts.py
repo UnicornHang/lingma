@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from app.models.work import Work
     from app.models.world import WorldBible
 
+    from app.schemas.rag import RagHit
     from app.services.chapter_role_resolver import ReferenceHints
 
 # 用 sentinel 避免在 f-string 内出现单引号
@@ -69,10 +70,12 @@ def build_user_prompt(
     same_volume_outline: "list[OutlineNode] | None" = None,
     world_refs: "list[str] | None" = None,
     reference_hints: "ReferenceHints | None" = None,
+    rag_hits: "list[RagHit] | None" = None,
 ) -> str:
     """[提交 B] 委托给 ``assemble_writer_slots`` 做确定性 slot 装配。
 
-    签名与原版完全兼容;新增可选参数 ``reference_hints``(由 WriterAgent 传入)。
+    签名与原版完全兼容;新增可选参数 ``reference_hints``(由 WriterAgent 传入)
+    与 ``rag_hits``(由 WriterAgent 在 RAG 检索后传入;None/空 时跳过 RAG slot)。
     """
     from app.prompts.writer_slots import assemble_writer_slots
 
@@ -88,5 +91,6 @@ def build_user_prompt(
         same_volume_outline=same_volume_outline or [],
         world_refs=world_refs,
         reference_hints=reference_hints,
+        rag_hits=rag_hits,
     )
     return assembly.user_text

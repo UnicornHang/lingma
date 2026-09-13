@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.models.work import Work
     from app.models.world import WorldBible
 
+    from app.schemas.rag import RagHit
     from app.services.chapter_role_resolver import ReferenceHints
 
 _EMPTY = "（未指定）"
@@ -263,6 +264,22 @@ def _format_characters_slot(characters: list["Character"]) -> str:
     return "\n".join(lines)
 
 
+def _format_rag_hits_slot(hits: list["RagHit"], max_chars: int = 300) -> str:
+    """把 RAG 检索命中的若干条 chunk 渲染为 prompt 段。
+
+    每条格式:`  - [{target_type}] (score={score:.2f}) {text[:max_chars]}`
+    """
+    lines: list[str] = []
+    for h in hits:
+        text = (h.text or "").replace("\n", " ").strip()
+        # 单条再截断一次,避免单条过长挤出后面的命中
+        if len(text) > max_chars:
+            text = text[:max_chars] + "…"
+        score = h.score if h.score is not None else 0.0
+        lines.append(f"  - [{h.target_type}] (score={score:.2f}) {text}")
+    return "\n".join(lines)
+
+
 def _format_task_slot(
     chapter: "Chapter",
     target_word_count: Optional[int],
@@ -298,8 +315,9 @@ def assemble_writer_slots(
     same_volume_outline: list["OutlineNode"],
     world_refs: Optional[list[str]],
     reference_hints: Optional["ReferenceHints"] = None,
+    rag_hits: Optional[list["RagHit"]] = None,
 ) -> PromptAssembly:
-    """装配完整的 WriterAgent user prompt(11 个有序 slot)。
+    """装配完整的 WriterAgent user prompt(11+1 个有序 slot)。
 
     顺序(不可改):
     1. 作品总览
@@ -310,6 +328,7 @@ def assemble_writer_slots(
     6. 世界书全文(节选,受 hints.must_read_world_full 控制)
     7. 世界条目(精准,resolve_world_refs)
     8. 出场角色
+    8.5 [RAG 检索补充] — 在出场角色之后、上一章摘要之前(rag_hits 非空时插入)
     9. 上一章摘要
     10. 本章已有正文(续写模式)
     11. 本章任务
@@ -403,6 +422,16 @@ def assemble_writer_slots(
             max_chars=1500,
         ))
 
+    # 8.5 RAG 检索补充(rag_hits 非空时插入,空 list/None 时跳过)
+    if rag_hits:
+        rag_body = _format_rag_hits_slot(rag_hits)
+        if rag_body:
+            slots.append(PromptSlot(
+                title="【RAG 向量检索补充】",
+                body=rag_body,
+                max_chars=1500,
+            ))
+
     # 9. 上一章摘要
     if previous_summary:
         slots.append(PromptSlot(
@@ -445,5 +474,6 @@ def assemble_writer_slots(
             "has_existing_tail": existing_tail is not None,
             "has_world": world is not None,
             "world_refs_resolved": [r.name for r in refs],
+            "rag_hit_count": len(rag_hits or []),
         },
     )

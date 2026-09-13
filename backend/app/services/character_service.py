@@ -1,4 +1,5 @@
 """Character 业务逻辑层"""
+import logging
 from typing import Sequence
 from uuid import UUID
 
@@ -9,6 +10,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.character import Character
 from app.models.work import Work
 from app.schemas.character import CharacterCreate, CharacterUpdate
+from app.services.rag_service import get_rag_service
+
+logger = logging.getLogger(__name__)
+
+
+async def _try_index_character(db: AsyncSession, character: Character) -> None:
+    """RAG 索引(失败仅 log,不阻塞业务)。"""
+    try:
+        n = await get_rag_service().index_character(db, character)
+        if n > 0:
+            logger.info("RAG 索引角色: name=%s, chunks=%d", character.name, n)
+    except Exception as e:  # pragma: no cover - 防御
+        logger.warning("RAG 索引角色失败(已降级): %s", e)
+
+
+async def _try_delete_character_collection(character: Character) -> None:
+    """删除角色在 RAG 中的 collection 记录(失败仅 log)。"""
+    try:
+        get_rag_service().delete_collection_for_work(character.work_id, "character")
+    except Exception as e:  # pragma: no cover - 防御
+        logger.warning("RAG 删除角色 collection 失败(已降级): %s", e)
 
 
 async def _ensure_work(db: AsyncSession, work_id: UUID) -> None:
@@ -37,6 +59,7 @@ async def create_character(db: AsyncSession, payload: CharacterCreate) -> Charac
     db.add(character)
     await db.flush()
     await db.refresh(character)
+    await _try_index_character(db, character)
     return character
 
 
@@ -78,10 +101,19 @@ async def update_character(
         setattr(character, key, value)
     await db.flush()
     await db.refresh(character)
+    await _try_index_character(db, character)
     return character
 
 
 async def delete_character(db: AsyncSession, character_id: UUID) -> None:
     character = await get_character(db, character_id)
+    work_id = character.work_id
+    target_id = str(character.id)
     await db.delete(character)
     await db.flush()
+    # 用最小依赖重建一个 stub 用于 RAG collection 清理
+    try:
+        get_rag_service().delete_collection_for_work(work_id, "character")
+        logger.info("RAG 删除角色 collection: work=%s, target=%s", work_id, target_id)
+    except Exception as e:  # pragma: no cover - 防御
+        logger.warning("RAG 删除角色 collection 失败(已降级): %s", e)

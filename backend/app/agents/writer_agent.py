@@ -19,20 +19,23 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import AsyncIterator, Literal, Optional
+from typing import AsyncIterator, Literal
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.base import BaseAgent
+from app.config import settings
 from app.models.character import Character
 from app.models.chapter import Chapter
 from app.models.outline import OutlineNode, OutlineNodeType
 from app.models.work import Work
 from app.models.world import WorldBible
 from app.prompts.writer_prompts import build_system_prompt, build_user_prompt
+from app.schemas.rag import RagHit
 from app.services.chapter_role_resolver import (
     ChapterRole,
     ReferenceHints,
@@ -46,6 +49,7 @@ from app.services.llm_service import (
     ProviderConfig,
     get_llm_service,
 )
+from app.services.rag_service import get_rag_service
 from app.services.world_service import get_or_create_world_bible
 
 logger = logging.getLogger(__name__)
@@ -110,6 +114,9 @@ class WriterAgent(BaseAgent):
         same_volume_outline = await _load_same_volume_outline(db, outline)
         previous_summary = await _load_previous_chapter_summary(db, chapter)
 
+        # ===== RAG 检索（可优雅降级）=====
+        rag_hits = await _search_rag_hits(db, chapter, outline)
+
         target_words = (
             outline.target_word_count if outline and outline.target_word_count else 3000
         )
@@ -125,6 +132,7 @@ class WriterAgent(BaseAgent):
             previous_summary=previous_summary,
             same_volume_outline=same_volume_outline,
             world_refs=(outline.world_refs if outline else None),
+            rag_hits=rag_hits,
         )
         messages = [LLMMessage(role="system", content=system), LLMMessage(role="user", content=user)]
 
@@ -183,6 +191,9 @@ class WriterAgent(BaseAgent):
         same_volume_outline = await _load_same_volume_outline(db, outline)
         previous_summary = await _load_previous_chapter_summary(db, chapter)
 
+        # ===== RAG 检索（可优雅降级）=====
+        rag_hits = await _search_rag_hits(db, chapter, outline)
+
         # 计算有效目标字数:请求 > outline > 默认 3000
         effective_target = target_word_count
         if not effective_target:
@@ -230,6 +241,7 @@ class WriterAgent(BaseAgent):
             same_volume_outline=same_volume_outline,
             world_refs=(outline.world_refs if outline else None),
             reference_hints=hints,
+            rag_hits=rag_hits,
         )
         messages = [
             LLMMessage(role="system", content=system),
@@ -240,6 +252,7 @@ class WriterAgent(BaseAgent):
         slot_marks = [
             "【作品总览】", "【文风裁决】", "【本章大纲】", "【Reference Gate 必读】",
             "【同卷其他章节", "【世界书", "【世界条目", "【出场角色】",
+            "【RAG 向量检索补充】",
             "【上一章摘要】", "【本章已有正文", "【本章任务】",
         ]
         slots_present = [m for m in slot_marks if m in user]
@@ -375,3 +388,56 @@ async def _load_previous_chapter_summary(db: AsyncSession, chapter: Chapter) -> 
     if not prev:
         return None
     return prev.summary or (prev.plain_content[:300] if prev.plain_content else None)
+
+
+# ==================== RAG 检索辅助 ====================
+
+
+async def _search_rag_hits(
+    db: AsyncSession,
+    chapter: Chapter,
+    outline: OutlineNode | None,
+    *,
+    timeout_s: float = 2.0,
+) -> list[RagHit]:
+    """从 RAG 检索与本章相关的历史上下文。
+
+    行为契约:
+    - ``settings.rag_enabled=False`` → 立即返回 []
+    - 任何异常 / 超时 → 记 warning 后返回 [],不阻塞章节生成
+    - query 由 outline.summary + chapter.summary + chapter.title 拼接(空字段过滤)
+    - 取 ``settings.rag_top_k`` 条
+    """
+    if not settings.rag_enabled:
+        return []
+    try:
+        query_parts = [
+            (outline.summary if outline and outline.summary else ""),
+            (chapter.summary or ""),
+            (chapter.title or ""),
+        ]
+        query = " ".join(p for p in query_parts if p and p.strip())
+        if not query:
+            return []
+        hits = await asyncio.wait_for(
+            get_rag_service().search(
+                work_id=chapter.work_id,
+                query=query,
+                top_k=settings.rag_top_k,
+            ),
+            timeout=timeout_s,
+        )
+        if hits:
+            logger.info(
+                "WriterAgent RAG 检索: chapter=%s, hits=%d, query_len=%d",
+                chapter.id, len(hits), len(query),
+            )
+        return hits
+    except asyncio.TimeoutError:
+        logger.warning(
+            "WriterAgent RAG 检索超时(%.1fs): chapter=%s", timeout_s, chapter.id,
+        )
+        return []
+    except Exception as e:
+        logger.warning("WriterAgent RAG 检索失败(已降级): %s", e)
+        return []

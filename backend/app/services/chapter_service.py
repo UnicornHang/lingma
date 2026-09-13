@@ -1,4 +1,5 @@
 """Chapter 业务逻辑层"""
+import logging
 from typing import Sequence
 from uuid import UUID
 
@@ -9,6 +10,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.chapter import Chapter
 from app.models.work import Work
 from app.schemas.chapter import ChapterCreate, ChapterUpdate
+from app.services.rag_service import get_rag_service
+
+logger = logging.getLogger(__name__)
+
+
+async def _try_index_chapter_summary(db: AsyncSession, chapter: Chapter) -> None:
+    """RAG 索引章节摘要(失败仅 log,不阻塞业务)。"""
+    try:
+        n = await get_rag_service().index_chapter_summary(db, chapter)
+        if n > 0:
+            logger.info("RAG 索引章节: title=%s, chunks=%d", chapter.title, n)
+    except Exception as e:  # pragma: no cover - 防御
+        logger.warning("RAG 索引章节失败(已降级): %s", e)
 
 
 def count_words(text: str) -> int:
@@ -46,6 +60,7 @@ async def create_chapter(db: AsyncSession, payload: ChapterCreate) -> Chapter:
     db.add(chapter)
     await db.flush()
     await db.refresh(chapter)
+    await _try_index_chapter_summary(db, chapter)
     return chapter
 
 
@@ -100,6 +115,7 @@ async def update_chapter(
     chapter.version += 1
     await db.flush()
     await db.refresh(chapter)
+    await _try_index_chapter_summary(db, chapter)
     return chapter
 
 

@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     # ===== 向量库 =====
     vector_store_path: str = "/app/data/vector_store"
     embedding_model: str = "BAAI/bge-small-zh-v1.5"
+    rag_enabled: bool = True                       # RAG 总开关（设为 False 全量跳过向量检索）
+    rag_top_k: int = 5                             # 默认检索条数
+    rag_chunk_min_chars: int = 200                 # 段落级 chunk 最小字数
+    rag_chunk_max_chars: int = 500                 # 段落级 chunk 最大字数
+    rag_collection_prefix: str = "lingma"          # collection 前缀（按 work 隔离）
 
     # ===== LLM 限流 =====
     rate_limit_per_minute: int = 60
