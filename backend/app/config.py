@@ -67,6 +67,16 @@ class Settings(BaseSettings):
     # 默认 1:首次 critic 不达标则改一次,不再退步
     critic_rewrite_max: int = 1
 
+    # ===== [P3.4] DOCX + EPUB 导出 =====
+    # 单次导出最多包含的章节数(防止大作品阻塞请求线程)
+    export_max_chapters: int = 500
+    # DOCX Normal style + EPUB CSS 使用的 CJK 字体名(英文界面显示用)
+    # 在 Linux/Docker 上若无该字体,Word 会回退到默认中文字形
+    export_cjk_font_name: str = "Microsoft YaHei"
+    # 可选:指向具体字体文件的相对路径(供 epub CSS @font-face 嵌入)
+    # 留空则 EPUB CSS 只声明 font-family,不内嵌字体(包体小,跨平台字形回退)
+    export_font_path: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
