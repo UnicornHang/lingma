@@ -1,12 +1,15 @@
 """Writer Agent 的 Prompt 模板
 
 SYSTEM 角色由小说风格 + 写作要求构成；
-USER 角色由章节上下文（标题 / 大纲 / 世界书 / 角色）构成。
+USER 角色由章节上下文(标题 / 大纲 / 世界书 / 角色)构成。
+
+[提交 B] ``build_user_prompt`` 现在委托给 ``writer_slots.assemble_writer_slots``
+做确定性 slot 装配;签名与外部行为保持兼容。
 """
 from __future__ import annotations
 
 from textwrap import dedent
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from app.models.character import Character
@@ -14,6 +17,8 @@ if TYPE_CHECKING:
     from app.models.outline import OutlineNode
     from app.models.work import Work
     from app.models.world import WorldBible
+
+    from app.services.chapter_role_resolver import ReferenceHints
 
 # 用 sentinel 避免在 f-string 内出现单引号
 _EMPTY = "（未指定）"
@@ -63,88 +68,25 @@ def build_user_prompt(
     target_word_count: "int | None" = None,
     same_volume_outline: "list[OutlineNode] | None" = None,
     world_refs: "list[str] | None" = None,
+    reference_hints: "ReferenceHints | None" = None,
 ) -> str:
-    parts: list[str] = []
+    """[提交 B] 委托给 ``assemble_writer_slots`` 做确定性 slot 装配。
 
-    # 作品总览
-    genre = work.genre.value if hasattr(work.genre, "value") else (work.genre or _EMPTY)
-    parts.append(
-        f"【作品】{work.title}\n"
-        f"【类型】{genre}\n"
-        f"【一句话简介】{work.logline or _EMPTY}\n"
-        f"【风格关键词】{_join_list(work.style_keywords or [])}\n"
-        f"【目标读者】{_join_list(work.target_audience or [])}\n"
+    签名与原版完全兼容;新增可选参数 ``reference_hints``(由 WriterAgent 传入)。
+    """
+    from app.prompts.writer_slots import assemble_writer_slots
+
+    assembly = assemble_writer_slots(
+        work=work,
+        chapter=chapter,
+        outline=outline,
+        world=world,
+        characters=characters or [],
+        previous_summary=previous_summary,
+        existing_tail=existing_tail,
+        target_word_count=target_word_count,
+        same_volume_outline=same_volume_outline or [],
+        world_refs=world_refs,
+        reference_hints=reference_hints,
     )
-
-    # 大纲定位
-    if outline:
-        beats = outline.beats or []
-        beats_text = "\n".join(f"  - {b}" for b in beats) if beats else f"  {_NONE_DESC}"
-        # 涉及角色/世界条目显式列出,作为强提示
-        involved_chars = _join_list(outline.characters_involved or [])
-        involved_world = _join_list(outline.world_refs or [])
-        parts.append(
-            f"【本章大纲】\n"
-            f"标题：{outline.title}\n"
-            f"类型：{outline.type}\n"
-            f"简介：{outline.summary or _NONE_DESC}\n"
-            f"节拍：\n{beats_text}\n"
-            f"涉及角色：{involved_chars}\n"
-            f"涉及世界条目：{involved_world}\n"
-        )
-
-    # 同卷其他章节大纲(上下文连贯性)
-    if same_volume_outline:
-        sibling_lines = []
-        for sib in same_volume_outline[:15]:
-            summary_1line = (sib.summary or "").split("\n")[0][:80]
-            sibling_lines.append(f"  - {sib.title}：{summary_1line or _NONE_DESC}")
-        parts.append(
-            f"【同卷其他章节（用于上下文连贯）】\n"
-            + "\n".join(sibling_lines)
-            + "\n"
-        )
-
-    # 世界书
-    if world and world.raw_text:
-        parts.append(f"【世界书（节选）】\n{world.raw_text[:1500]}\n")
-
-    # 本章相关世界条目(由 outline.world_refs 触发)
-    if world_refs:
-        parts.append(f"【本章相关世界条目（重点参考）】\n{_join_list(world_refs)}\n")
-
-    # 角色
-    if characters:
-        char_lines = []
-        for c in characters[:8]:
-            desc = (c.raw_text or "").replace("\n", " ")[:120]
-            char_lines.append(f"  - {c.name}（{c.role}）：{desc or _NONE_DESC}")
-        parts.append("【出场角色】\n" + "\n".join(char_lines) + "\n")
-
-    # 上一章摘要
-    if previous_summary:
-        parts.append(f"【上一章摘要】\n{previous_summary}\n")
-
-    # 已有正文尾段（续写模式）
-    if existing_tail:
-        parts.append(
-            f"【本章已有正文（请从末尾自然续写，不要重复、不要总结前文）】\n"
-            f"{existing_tail}\n"
-        )
-
-    # 任务指令
-    target_words = target_word_count or chapter.word_count or 3000
-    tail_hint = (
-        "现在请从上述已有正文的末尾自然续写，不要重复、不要总结前文："
-        if existing_tail
-        else "现在请开始撰写本章正文："
-    )
-    parts.append(
-        f"\n【本章任务】\n"
-        f"标题：{chapter.title}\n"
-        f"目标字数：约 {target_words} 字\n"
-        f"摘要要求：{chapter.summary or _NONE_DESC}\n\n"
-        f"{tail_hint}"
-    )
-
-    return "\n".join(parts)
+    return assembly.user_text

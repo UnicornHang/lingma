@@ -10,11 +10,17 @@
 - 同卷(同 parent_id)其他章节大纲注入
 - 本章相关角色优先(按 outline.characters_involved 匹配已有 Character)
 - 本章相关世界条目作为强提示注入
+
+[提交 B] 装配升级为确定性 slot + Reference Gate:
+- ``build_user_prompt`` 委托给 ``writer_slots.assemble_writer_slots``
+- pre-write Reference Gate 根据章节角色(opening/reveal/climax/transition)
+  路由不同 references,确保 LLM 看到必需的世界书/角色卡片段
+- 日志输出 slot 数 + 总字数 + 截断列表
 """
 from __future__ import annotations
 
 import logging
-from typing import AsyncIterator, Literal
+from typing import AsyncIterator, Literal, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -27,6 +33,13 @@ from app.models.outline import OutlineNode, OutlineNodeType
 from app.models.work import Work
 from app.models.world import WorldBible
 from app.prompts.writer_prompts import build_system_prompt, build_user_prompt
+from app.services.chapter_role_resolver import (
+    ChapterRole,
+    ReferenceHints,
+    apply_reference_gate,
+    references_for_role,
+    resolve_chapter_role,
+)
 from app.services.llm_service import (
     LLMMessage,
     LLMRequest,
@@ -146,6 +159,7 @@ class WriterAgent(BaseAgent):
         continue_from_chars: int = 1500,
         target_word_count: int | None = None,
         outline_node_id: UUID | None = None,
+        chapter_role: ChapterRole | None = None,
     ) -> tuple[list[LLMMessage], str, str]:
         """加载上下文并装配 system + user 消息。
 
@@ -154,6 +168,7 @@ class WriterAgent(BaseAgent):
         - ``mode="continue"`` 且章节为空时,降级为 ``generate`` 语义(避免给 LLM 看空块)
         - ``target_word_count``(来自请求)优先于 outline 默认值
         - ``outline_node_id``(来自请求)优先于 chapter.outline_node_id
+        - ``chapter_role``(可选):外部传入的章节角色判定;缺省时由 outline 启发式推断
         """
         chapter = await _load_chapter(db, chapter_id)
         work = await _load_work(db, chapter.work_id)
@@ -189,30 +204,57 @@ class WriterAgent(BaseAgent):
                 )
                 effective_mode = "generate"
 
+        # ===== Reference Gate =====
+        # 1) 章节角色判定:外部传入优先,否则由 outline 启发式推断
+        resolved_role = chapter_role or resolve_chapter_role(outline)
+        # 2) 根据角色拿到 ReferenceHints
+        hints = references_for_role(resolved_role, outline)
+        # 3) 实际应用 hints 到 world/characters
+        effective_world, effective_characters = apply_reference_gate(
+            outline=outline,
+            world=world,
+            characters=characters,
+            hints=hints,
+        )
+
         system = build_system_prompt(effective_target)
         user = build_user_prompt(
             work=work,
             chapter=chapter,
             outline=outline,
-            world=world,
-            characters=characters,
+            world=effective_world,
+            characters=effective_characters,
             previous_summary=previous_summary,
             existing_tail=existing_tail,
             target_word_count=effective_target,
             same_volume_outline=same_volume_outline,
             world_refs=(outline.world_refs if outline else None),
+            reference_hints=hints,
         )
         messages = [
             LLMMessage(role="system", content=system),
             LLMMessage(role="user", content=user),
         ]
+
+        # 简要统计 slot 数(从 user 文本倒推)
+        slot_marks = [
+            "【作品总览】", "【文风裁决】", "【本章大纲】", "【Reference Gate 必读】",
+            "【同卷其他章节", "【世界书", "【世界条目", "【出场角色】",
+            "【上一章摘要】", "【本章已有正文", "【本章任务】",
+        ]
+        slots_present = [m for m in slot_marks if m in user]
         logger.info(
-            "WriterAgent build_messages: chapter=%s, mode=%s, target=%s字, 同卷章=%d, 聚焦角色=%d",
+            "WriterAgent build_messages: chapter=%s, mode=%s, target=%s字, "
+            "chapter_role=%s, slots=%d/%d, user_chars=%d, 同卷章=%d, 聚焦角色=%d",
             chapter_id,
             effective_mode,
             effective_target,
+            resolved_role.value,
+            len(slots_present),
+            len(slot_marks),
+            len(user),
             len(same_volume_outline),
-            len(characters),
+            len(effective_characters),
         )
         return messages, "mock", user
 

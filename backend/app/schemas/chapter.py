@@ -116,3 +116,61 @@ class ChapterVersionListResponse(BaseModel):
 
     total: int
     items: list[ChapterVersionRead]
+
+
+# ==================== Editor Agent: AI 痕迹检测与去味 ====================
+
+
+class PatternFindingRead(BaseModel):
+    """单条 AI 痕迹命中"""
+
+    category: str = Field(..., description="类别短码(neg-pos-flip, trailer-summary …)")
+    severity: str = Field(..., description="blocking | advisory")
+    start: int = Field(..., description="起始字符偏移(半开区间)")
+    end: int = Field(..., description="结束字符偏移")
+    snippet: str = Field(..., description="触发片段(最多 80 字)")
+    message: str = Field(..., description="人话描述")
+    rule: str = Field(default="", description="触发的具体规则")
+
+
+class AnalyzeChapterRequest(BaseModel):
+    """AI 痕迹检测请求(纯本地,无 LLM 调用)"""
+
+    text: str = Field(..., min_length=1, description="待检测文本")
+
+
+class AnalyzeChapterResponse(BaseModel):
+    """AI 痕迹检测响应"""
+
+    findings: list[PatternFindingRead]
+    blocking_count: int
+    advisory_count: int
+    stats: dict[str, Any] = Field(default_factory=dict)
+
+
+class PolishRewriteRead(BaseModel):
+    """单条 finding 的改写结果"""
+
+    category: str
+    original: str
+    rewritten: str
+    reason: str
+
+
+class PolishChapterRequest(BaseModel):
+    """章节去味请求(调 LLM)"""
+
+    text: str = Field(..., min_length=1, description="待润色文本")
+    style_keywords: list[str] | None = Field(default=None, description="文风关键词锚点")
+    temperature: float = Field(default=0.6, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=4096, ge=256, le=20_000)
+
+
+class PolishChapterResponse(BaseModel):
+    """章节去味响应"""
+
+    findings: list[PatternFindingRead]
+    rewrites: list[PolishRewriteRead]
+    polished_text: str = Field(..., description="应用改写后的全文(若 LLM 失败则等于原文)")
+    summary: str
+    stats: dict[str, Any] = Field(default_factory=dict)

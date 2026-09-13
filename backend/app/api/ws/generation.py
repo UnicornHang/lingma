@@ -39,6 +39,7 @@ from app.agents.writer_agent import WriterAgent
 from app.db.session import async_session_factory
 from app.models.chapter import Chapter, ChapterStatus, ChapterVersion
 from app.models.task import GenerationTask, TaskStatus, TaskType
+from app.services.chapter_role_resolver import resolve_chapter_role
 from app.services.chapter_service import count_words
 from app.services.llm_service import (
     LLMMessage,
@@ -223,6 +224,19 @@ async def _handle_start(
                 raise ValueError("task 未绑定 chapter,且客户端未提供 messages")
             else:
                 # ===== 真实 writer 路径:由 WriterAgent 加载上下文并装配消息 =====
+                # [提交 B] 在 build_messages 之前解析章节角色,
+                # 透传到 WriterAgent 用于 Reference Gate 路由 references
+                resolved_outline_id = outline_node_id
+                if not resolved_outline_id and chapter_id is not None:
+                    ch_for_role = await db.get(Chapter, chapter_id)
+                    if ch_for_role:
+                        resolved_outline_id = ch_for_role.outline_node_id
+                outline_for_role = None
+                if resolved_outline_id:
+                    from app.models.outline import OutlineNode as _OutlineNode
+                    outline_for_role = await db.get(_OutlineNode, resolved_outline_id)
+                chapter_role = resolve_chapter_role(outline_for_role)
+
                 agent = WriterAgent()
                 messages, model_name, prompt_text = await agent.build_messages(
                     db,
@@ -231,6 +245,7 @@ async def _handle_start(
                     continue_from_chars=continue_from_chars,
                     target_word_count=target_word_count,
                     outline_node_id=outline_node_id,
+                    chapter_role=chapter_role,
                 )
                 req = LLMRequest(
                     messages=messages,

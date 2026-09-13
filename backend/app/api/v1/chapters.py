@@ -5,10 +5,13 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.editor_agent import get_editor_agent
 from app.deps import get_db
 from app.models.chapter import ChapterVersion
 from app.models.task import GenerationTask, TaskStatus, TaskType
 from app.schemas.chapter import (
+    AnalyzeChapterRequest,
+    AnalyzeChapterResponse,
     ChapterCreate,
     ChapterListResponse,
     ChapterRead,
@@ -16,9 +19,14 @@ from app.schemas.chapter import (
     ChapterVersionListResponse,
     ChapterVersionRead,
     GenerateChapterRequest,
+    PatternFindingRead,
+    PolishChapterRequest,
+    PolishChapterResponse,
+    PolishRewriteRead,
 )
 from app.services import chapter_service
 from app.services import work_service
+from app.services.llm_service import resolve_provider_config
 
 router = APIRouter()
 
@@ -168,4 +176,60 @@ async def list_chapter_versions_endpoint(
     return ChapterVersionListResponse(
         total=len(versions),
         items=[ChapterVersionRead.model_validate(v) for v in versions],
+    )
+
+
+# ==================== Editor Agent: AI 痕迹检测 / 去味 ====================
+
+
+@router.post(
+    "/analyze-ai-patterns",
+    response_model=AnalyzeChapterResponse,
+    summary="AI 痕迹检测（纯本地，无 LLM 调用）",
+    description=(
+        "对传入文本跑 AI 痕迹检测器，返回 findings 列表 + 统计。"
+        "适用于:写完章节后立即显示报告、用户手动贴入片段检测。"
+    ),
+)
+async def analyze_ai_patterns_endpoint(
+    payload: AnalyzeChapterRequest,
+) -> AnalyzeChapterResponse:
+    agent = get_editor_agent()
+    result = agent.analyze(payload.text)
+    return AnalyzeChapterResponse(
+        findings=[PatternFindingRead(**f) for f in result["findings"]],
+        blocking_count=result["blocking_count"],
+        advisory_count=result["advisory_count"],
+        stats=result["stats"],
+    )
+
+
+@router.post(
+    "/polish",
+    response_model=PolishChapterResponse,
+    summary="章节去味（detect + LLM 改写）",
+    description=(
+        "完整去味流程:检测 AI 痕迹 → 把 findings + 原文喂给 LLM → 逐条重写 → 返回改写后的全文。"
+        "需要配置至少一个可用的 APIConfig(分配给 editor agent),否则降级为仅返回 findings 报告。"
+    ),
+)
+async def polish_chapter_endpoint(
+    payload: PolishChapterRequest,
+    db: AsyncSession = Depends(get_db),
+) -> PolishChapterResponse:
+    agent = get_editor_agent()
+    cfg = await resolve_provider_config(db, agent_type="editor")
+    result = await agent.polish(
+        payload.text,
+        cfg=cfg,
+        style_keywords=payload.style_keywords,
+        temperature=payload.temperature,
+        max_tokens=payload.max_tokens,
+    )
+    return PolishChapterResponse(
+        findings=[PatternFindingRead(**f.to_dict()) for f in result.findings],
+        rewrites=[PolishRewriteRead(**r.to_dict()) for r in result.rewrites],
+        polished_text=result.polished_text,
+        summary=result.summary,
+        stats=result.stats,
     )

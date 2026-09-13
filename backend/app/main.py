@@ -135,10 +135,15 @@ app.include_router(ws_router)
 if __name__ == "__main__":
     import uvicorn
 
+    is_dev = settings.app_env == "development"
+    if is_dev:
+        # 开发模式默认开 --reload,改代码自动重启
+        logger.info("🛠️  开发模式: 启用 uvicorn --reload,改动会自动重启")
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
         port=settings.backend_port,
-        reload=settings.app_env == "development",
+        reload=is_dev,
+        reload_dirs=["app"] if is_dev else None,
         log_level=settings.log_level.lower(),
     )

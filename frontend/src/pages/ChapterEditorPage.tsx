@@ -24,6 +24,8 @@ import {
   type Chapter,
   type ChapterVersion,
   type TipTapDoc,
+  type PatternFinding,
+  type PolishRewrite,
 } from '@/api/chapters';
 import { outlineApi, type OutlineTreeNode } from '@/api/outline';
 import { useGenerationStream } from '@/hooks/useGenerationStream';
@@ -83,6 +85,15 @@ export default function ChapterEditorPage() {
   // [P4] 版本历史 UI 状态
   const [versionModalOpen, setVersionModalOpen] = useState(false);
   const [activeVersion, setActiveVersion] = useState<ChapterVersion | null>(null);
+  // [Beta] Editor Agent: AI 去味
+  const [editorModalOpen, setEditorModalOpen] = useState(false);
+  const [editorLoading, setEditorLoading] = useState(false);
+  const [editorFindings, setEditorFindings] = useState<PatternFinding[]>([]);
+  const [editorRewrites, setEditorRewrites] = useState<PolishRewrite[]>([]);
+  const [editorPolishedText, setEditorPolishedText] = useState('');
+  const [editorSummary, setEditorSummary] = useState('');
+  const [editorBlockingCount, setEditorBlockingCount] = useState(0);
+  const [editorAdvisoryCount, setEditorAdvisoryCount] = useState(0);
 
   const saveTimerRef = useRef<number | null>(null);
   const editorRef = useRef<RichEditorHandle>(null);
@@ -242,6 +253,76 @@ export default function ChapterEditorPage() {
     generation.cancel();
     setTaskId(null);
   }, [generation]);
+
+  // ==================== Editor Agent: AI 去味 ====================
+
+  const handleOpenEditor = useCallback(async () => {
+    const text = plainText.trim();
+    if (!text) {
+      message.warning('正文为空,无法检测');
+      return;
+    }
+    setEditorModalOpen(true);
+    setEditorLoading(true);
+    setEditorFindings([]);
+    setEditorRewrites([]);
+    setEditorPolishedText('');
+    setEditorSummary('');
+    setEditorBlockingCount(0);
+    setEditorAdvisoryCount(0);
+    try {
+      // 先跑检测(纯本地,毫秒级)
+      const result = await chaptersApi.analyzeAIPatterns(text);
+      setEditorFindings(result.findings);
+      setEditorBlockingCount(result.blocking_count);
+      setEditorAdvisoryCount(result.advisory_count);
+    } catch (err) {
+      message.error(`检测失败:${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setEditorLoading(false);
+    }
+  }, [plainText, message]);
+
+  const handlePolish = useCallback(async () => {
+    const text = plainText.trim();
+    if (!text) return;
+    setEditorLoading(true);
+    try {
+      const result = await chaptersApi.polish({
+        text,
+        style_keywords: chapter?.work_id ? undefined : undefined, // 暂不传,后端默认行为
+      });
+      setEditorRewrites(result.rewrites);
+      setEditorPolishedText(result.polished_text);
+      setEditorSummary(result.summary);
+      setEditorFindings(result.findings);
+      setEditorBlockingCount(result.findings.filter((f) => f.severity === 'blocking').length);
+      setEditorAdvisoryCount(result.findings.filter((f) => f.severity === 'advisory').length);
+      if (result.rewrites.length === 0 && result.findings.length > 0) {
+        message.warning('已生成检测报告,但 LLM 改写未产出(可能未配置 API Key)');
+      } else {
+        message.success(`已生成 ${result.rewrites.length} 条改写建议`);
+      }
+    } catch (err) {
+      message.error(`润色失败:${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setEditorLoading(false);
+    }
+  }, [plainText, chapter?.work_id, message]);
+
+  /** 把 polished_text 应用到正文(全量替换) */
+  const handleApplyPolish = useCallback(() => {
+    if (!editorPolishedText) return;
+    // 通过编辑器句柄更新(整体替换为纯文本)
+    editorRef.current?.setContent(editorPolishedText);
+    // 标记 dirty,触发自动保存
+    setDirty(true);
+    // 同步本地 plainText
+    setPlainText(editorPolishedText);
+    setEditorModalOpen(false);
+    message.success('已应用润色结果到正文,请稍候自动保存');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorPolishedText, message]);
 
   // 字数显示
   const wordCount = useMemo(() => plainText.length, [plainText]);
@@ -470,6 +551,15 @@ export default function ChapterEditorPage() {
               title={outlineNodeId ? `AI 续写 800 字(基于大纲节点 ${outlineNodeId.slice(0, 8)})` : 'AI 续写 800 字'}
             >
               续写
+            </Button>
+            <Button
+              size="small"
+              icon={<Wand2 size={16} />}
+              onClick={handleOpenEditor}
+              disabled={isStreaming || !plainText.trim()}
+              title="检测 AI 痕迹并去味"
+            >
+              AI 去味
             </Button>
             <span className="px-2 py-1 text-body-sm text-on-surface-variant">提示词</span>
 
@@ -804,6 +894,127 @@ export default function ChapterEditorPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* [Beta] Editor Agent: AI 去味 Modal */}
+      <Modal
+        title={
+          <Space>
+            <Wand2 size={18} className="text-tertiary" />
+            <span>AI 去味</span>
+            {editorBlockingCount + editorAdvisoryCount > 0 && (
+              <Space size={4}>
+                {editorBlockingCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-label-sm bg-error-container text-on-error-container">
+                    {editorBlockingCount} 阻断
+                  </span>
+                )}
+                {editorAdvisoryCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-label-sm bg-tertiary-container text-on-tertiary-container">
+                    {editorAdvisoryCount} 建议
+                  </span>
+                )}
+              </Space>
+            )}
+          </Space>
+        }
+        open={editorModalOpen}
+        onCancel={() => setEditorModalOpen(false)}
+        footer={
+          <Space>
+            <Button onClick={() => setEditorModalOpen(false)}>关闭</Button>
+            {editorRewrites.length === 0 ? (
+              <Button
+                type="primary"
+                icon={<Sparkles size={14} />}
+                loading={editorLoading}
+                onClick={handlePolish}
+                disabled={editorFindings.length === 0}
+              >
+                让 AI 重写
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                icon={<CheckCircle2 size={14} />}
+                onClick={handleApplyPolish}
+                disabled={!editorPolishedText || editorPolishedText === plainText.trim()}
+              >
+                应用到正文
+              </Button>
+            )}
+          </Space>
+        }
+        width={840}
+        destroyOnClose
+      >
+        <Spin spinning={editorLoading} tip={editorLoading ? '检测中…' : ''}>
+          <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-2">
+            {editorFindings.length === 0 && !editorLoading && (
+              <div className="p-4 rounded-lg bg-tertiary-container/30 border-l-4 border-tertiary">
+                <p className="text-body-sm text-on-surface">
+                  ✓ 未检测到典型 AI 痕迹,正文看起来比较自然。
+                </p>
+                <p className="text-body-xs text-on-surface-variant mt-1">
+                  本检测器覆盖 10 类常见 AI 写作模式(否定翻转/反序对比/否定排比/音量反差/em-dash 密度/章尾总结/微动作复读/套式反应/抽象总结等)。
+                </p>
+              </div>
+            )}
+
+            {editorFindings.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {editorFindings.map((f, i) => (
+                  <div
+                    key={i}
+                    className={`p-3 rounded-lg border-l-4 ${
+                      f.severity === 'blocking'
+                        ? 'bg-error-container/40 border-error'
+                        : 'bg-tertiary-container/40 border-tertiary'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`px-2 py-0.5 rounded text-label-sm font-mono ${
+                          f.severity === 'blocking'
+                            ? 'bg-error text-on-error'
+                            : 'bg-tertiary text-on-tertiary'
+                        }`}
+                      >
+                        {f.severity === 'blocking' ? '阻断' : '建议'}
+                      </span>
+                      <span className="font-code-xs text-on-surface-variant">{f.category}</span>
+                      <span className="text-label-sm text-on-surface-variant">[{f.start}-{f.end}]</span>
+                    </div>
+                    <p className="text-body-sm text-on-surface mt-1">{f.message}</p>
+                    <pre className="mt-1 px-2 py-1 rounded bg-surface-container-lowest text-body-xs font-mono text-on-surface-variant whitespace-pre-wrap break-all">
+                      {f.snippet}
+                    </pre>
+                    {editorRewrites[i] && editorRewrites[i].rewritten !== editorRewrites[i].original && (
+                      <div className="mt-2 p-2 rounded bg-tertiary-fixed/30">
+                        <div className="text-label-xs text-on-surface-variant mb-1">改写后:</div>
+                        <p className="text-body-sm text-on-surface whitespace-pre-wrap">
+                          {editorRewrites[i].rewritten}
+                        </p>
+                        {editorRewrites[i].reason && (
+                          <p className="text-body-xs text-on-surface-variant mt-1 italic">
+                            理由: {editorRewrites[i].reason}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {editorSummary && (
+              <div className="p-3 rounded-lg bg-surface-container-low text-body-sm text-on-surface">
+                <span className="text-label-md text-on-surface-variant">总结: </span>
+                {editorSummary}
+              </div>
+            )}
+          </div>
+        </Spin>
       </Modal>
     </div>
   );

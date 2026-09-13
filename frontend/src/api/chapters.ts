@@ -98,7 +98,60 @@ export const chaptersApi = {
 
   listVersions: (chapterId: string) =>
     http.get<{ total: number; items: ChapterVersion[] }>(`/chapters/${chapterId}/versions`),
+
+  // ----- Editor Agent: AI 痕迹检测 / 去味 -----
+  analyzeAIPatterns: (text: string) =>
+    http.post<AnalyzeAIPatternsResponse>('/chapters/analyze-ai-patterns', { text }),
+
+  polish: (payload: PolishChapterRequest) =>
+    http.post<PolishChapterResponse>('/chapters/polish', payload),
 };
+
+// ==================== Editor Agent ====================
+
+/** AI 痕迹单条命中 */
+export interface PatternFinding {
+  category: string;
+  severity: 'blocking' | 'advisory';
+  start: number;
+  end: number;
+  snippet: string;
+  message: string;
+  rule: string;
+}
+
+export interface AnalyzeAIPatternsResponse {
+  findings: PatternFinding[];
+  blocking_count: number;
+  advisory_count: number;
+  stats: {
+    total: number;
+    by_category: Record<string, number>;
+    by_severity: Record<string, number>;
+  };
+}
+
+export interface PolishRewrite {
+  category: string;
+  original: string;
+  rewritten: string;
+  reason: string;
+}
+
+export interface PolishChapterRequest {
+  text: string;
+  style_keywords?: string[];
+  temperature?: number;
+  max_tokens?: number;
+}
+
+export interface PolishChapterResponse {
+  findings: PatternFinding[];
+  rewrites: PolishRewrite[];
+  polished_text: string;
+  summary: string;
+  stats: AnalyzeAIPatternsResponse['stats'];
+}
 
 // ==================== Chapter Version ====================
 
