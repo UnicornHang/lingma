@@ -25,8 +25,8 @@ aiosqlite = "^0.20.0"
 
 # LLM
 litellm = "^1.40.0"
-langchain = "^0.1.10"
-langgraph = "^0.0.30"
+langchain = "^0.3.0"
+langgraph = "^1.0.0"
 
 # Vector store
 chromadb = "^0.4.22"

@@ -1,27 +1,31 @@
-"""编排引擎（Orchestrator）
+"""[P3.1] 编排引擎 — 精简版。
 
-MVP：基于预定义 DAG 串行调用 6 个 Agent。
-     后续可替换为 LangGraph 状态机实现更复杂的分支与回滚。
+P3.1 重构:
+- 删除 `run_pipeline`(6-agent 串行占位实现,已确认无调用方)
+- 删除 `run_single`(未使用)
+- 保留 `run_chapter_prefill` 委托给 `app.orchestrator.preflight`,
+  后者进一步委托给 LangGraph StateGraph
+- 保留 `get_orchestrator()` 单例工厂以兼容现有调用方
+
+为什么 Orchestrator 类不整体删:
+- `get_orchestrator()` 在 `app/orchestrator/__init__.py` 中导出,
+  `backend/app/api/ws/generation.py:234` 可能 import(待核实)
+- 类可瘦身为仅含 `run_chapter_prefill` 一个方法
 """
-import logging
-from typing import Any, Awaitable, Callable
+from __future__ import annotations
+
+from typing import Any, Awaitable, Callable, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents import AGENT_REGISTRY, create_agent
-
-logger = logging.getLogger(__name__)
-
 
 class Orchestrator:
-    """编排器：协调多个 Agent 完成创作任务"""
+    """编排器:目前仅承担章节生成前的预填职责。
 
-    # 默认流水线：plot → world → character → writer → editor → critic
-    DEFAULT_PIPELINE = ["plot", "world", "character", "writer", "editor", "critic"]
-
-    def __init__(self) -> None:
-        self.registry = dict(AGENT_REGISTRY)
+    后续若需要更复杂的状态机(条件分支 / 并行 node / 子图),
+    直接扩展 `app.orchestrator.preflight_graph.build_prefill_graph()`。
+    """
 
     async def run_chapter_prefill(
         self,
@@ -34,10 +38,9 @@ class Orchestrator:
     ) -> dict[str, Any]:
         """章节生成前的预填:智能跳过已有数据,补全 plot/world/character。
 
-        通过 app.agents.preflight.run_chapter_prefill 实现。
+        委托给 `app.orchestrator.preflight.run_chapter_prefill` → LangGraph 实现。
         任一 stage 失败 → 仅 warning,不阻断 writer。
         """
-        # 局部 import 避免循环依赖
         from app.orchestrator.preflight import run_chapter_prefill
 
         return await run_chapter_prefill(
@@ -48,62 +51,15 @@ class Orchestrator:
             character_count=character_count,
         )
 
-    async def run_pipeline(
-        self,
-        context: dict[str, Any],
-        *,
-        pipeline: list[str] | None = None,
-        on_progress: Callable[[str, dict], Awaitable[None]] | None = None,
-    ) -> dict[str, Any]:
-        """执行完整流水线
-
-        Args:
-            context: 初始上下文（work_id, logline, target_word_count, ...）
-            pipeline: Agent 名称列表，默认六 Agent
-            on_progress: 进度回调，签名 async (agent_name, partial_result) -> None
-        Returns:
-            最终结果字典，包含每个 Agent 的输出
-        """
-        pipeline = pipeline or self.DEFAULT_PIPELINE
-        results: dict[str, Any] = {"_pipeline": pipeline, "_stages": {}}
-
-        for agent_name in pipeline:
-            if agent_name not in self.registry:
-                logger.warning(f"未知 Agent 跳过: {agent_name}")
-                continue
-
-            logger.info(f"[Orchestrator] 运行 {agent_name} Agent")
-            try:
-                agent = create_agent(agent_name)
-                stage_context = {**context, "previous_results": results["_stages"]}
-                output = await agent.execute(stage_context)
-                results["_stages"][agent_name] = output
-                if on_progress:
-                    await on_progress(agent_name, output)
-            except Exception as e:
-                logger.error(f"[Orchestrator] {agent_name} 失败: {e}", exc_info=True)
-                results["_stages"][agent_name] = {"error": str(e)}
-                results["_failed"] = agent_name
-                break
-
-        return results
-
-    async def run_single(
-        self,
-        agent_name: str,
-        context: dict[str, Any],
-    ) -> dict[str, Any]:
-        """运行单个 Agent"""
-        if agent_name not in self.registry:
-            raise ValueError(f"未知 Agent: {agent_name}")
-        agent = create_agent(agent_name)
-        return await agent.execute(context)
-
 
 _orchestrator: Orchestrator | None = None
 
 
 def get_orchestrator() -> Orchestrator:
+    """获取全局单例 Orchestrator。
+
+    保留以兼容 `from app.orchestrator import get_orchestrator` 调用方。
+    """
     global _orchestrator
     if _orchestrator is None:
         _orchestrator = Orchestrator()
