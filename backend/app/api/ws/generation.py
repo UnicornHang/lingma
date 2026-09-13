@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -39,9 +40,12 @@ from app.agents.writer_agent import WriterAgent
 from app.db.session import async_session_factory
 from app.models.chapter import Chapter, ChapterStatus, ChapterVersion
 from app.models.task import GenerationTask, TaskStatus, TaskType
+from app.prompts.editor_prompts import build_rewrite_full_chapter_prompt
+from app.services.ai_pattern_detector import AIPatternDetector, Severity, summarize as summarize_findings
 from app.services.chapter_role_resolver import resolve_chapter_role
 from app.services.chapter_service import count_words
 from app.services.llm_service import (
+    LLMError,
     LLMMessage,
     LLMRequest,
     ProviderConfig,
@@ -178,6 +182,19 @@ async def _handle_start(
             except ValueError:
                 logger.warning("outline_node_id 不是合法 UUID: %r,忽略", outline_node_id)
                 outline_node_id = None
+        # [提交 C] 自动去味开关(默认开)
+        auto_polish = bool(params.get("auto_polish", True))
+        max_blocking_for_rewrite = int(params.get("max_blocking_for_rewrite", 0))
+        # 文风关键词(从 work 取,供自动去味 prompt 使用)
+        work_style_keywords: list[str] = []
+        try:
+            if chapter and chapter.work_id:
+                from app.models.work import Work as _Work
+                work_obj = await db.get(_Work, chapter.work_id)
+                if work_obj and work_obj.style_keywords:
+                    work_style_keywords = list(work_obj.style_keywords)
+        except Exception:
+            pass
 
         # 续写模式:取章节 baseline 一次性快照,后续所有写库操作基于此 baseline + 累计
         existing_baseline = ""
@@ -294,6 +311,19 @@ async def _handle_start(
         logger.error("生成失败: task_id=%s, error=%s", task_id, e, exc_info=True)
         error_msg = str(e)
 
+    # ===== 自动去味(在落库与回报前执行;失败兜底不阻断) =====
+    auto_polish_report: dict | None = None
+    if not error_msg and auto_polish:
+        cleaned_full = _strip_think_blocks(full_content, drop_prefix=existing_baseline)
+        cleaned_full, auto_polish_report = await _auto_polish_if_needed(
+            text=cleaned_full,
+            cfg=cfg,
+            style_keywords=work_style_keywords,
+            max_blocking_for_rewrite=max_blocking_for_rewrite,
+        )
+        # 把去味结果同步回 full_content,确保落库与前端一致
+        full_content = cleaned_full
+
     # ===== 完成态落库 =====
     model_used = cfg.model if cfg else "mock"
     async with async_session_factory() as db:
@@ -314,6 +344,7 @@ async def _handle_start(
                     "preview": preview_text[:500],
                     "length": len(preview_text),
                     "mode": mode,
+                    "auto_polish_report": auto_polish_report,
                 }
             task.token_usage = final_usage
             await db.commit()
@@ -342,16 +373,122 @@ async def _handle_start(
             "error": error_msg,
         })
     else:
-        # 剥离 <think> 痕迹 + 剔除 existing_tail 复述,确保前端拿到的 content 是真正的新增内容
-        done_content = _strip_think_blocks(full_content, drop_prefix=existing_baseline)
+        # full_content 已经包含 think 剥离 + 自动去味结果,直接用
         await websocket.send_json({
             "type": "done",
             "task_id": task_id,
             "stream_id": stream_id,
-            "content": done_content,
+            "content": full_content,
             "token_usage": final_usage,
             "mode": mode,
+            "auto_polish_report": auto_polish_report,
         })
+
+
+# ==================== 提交 C:自动去味(生成收尾阶段) ====================
+
+
+# 单章重写后的最小有效长度,低于此值视为 LLM 没救(返回空/模板),保留原文
+_AUTO_POLISH_MIN_OUTPUT_CHARS = 50
+
+
+async def _auto_polish_if_needed(
+    text: str,
+    cfg: ProviderConfig | None,
+    *,
+    style_keywords: list[str] | None,
+    max_blocking_for_rewrite: int = 0,
+) -> tuple[str, dict | None]:
+    """生成完成后:跑 AI 痕迹检测,blocking 超阈值就调 LLM 整章重写一次。
+
+    返回: (final_text, report)。report=None 表示跳过(auto_polish 关闭或空文本)。
+
+    报告字段:
+    - blocking_count / advisory_count: 改写前
+    - rewrite_attempted / rewrite_succeeded: bool
+    - rewrite_error: str | None
+    - final_blocking: 改写后剩余 blocking 数(None 表示未再检测)
+    - pre_findings: list[dict] —— 改写前 findings 摘要(至多 5 条)
+    - elapsed_ms: int
+    """
+    if not text or not text.strip():
+        return text, None
+    start_ms = int(time.time() * 1000)
+    detector = AIPatternDetector()
+
+    # ===== 阶段 1:检测 =====
+    findings = detector.detect(text)
+    blocking_count = sum(1 for f in findings if f.severity == Severity.BLOCKING)
+    advisory_count = sum(1 for f in findings if f.severity == Severity.ADVISORY)
+
+    base_report = {
+        "blocking_count": blocking_count,
+        "advisory_count": advisory_count,
+        "rewrite_attempted": False,
+        "rewrite_succeeded": False,
+        "rewrite_error": None,
+        "final_blocking": None,
+        "pre_findings": [f.to_dict() for f in findings[:5]],
+        "elapsed_ms": 0,
+    }
+
+    # 无 blocking → 不触发重写
+    if blocking_count <= max_blocking_for_rewrite:
+        base_report["elapsed_ms"] = int(time.time() * 1000) - start_ms
+        return text, base_report
+
+    # ===== 阶段 2:LLM 整章重写 =====
+    base_report["rewrite_attempted"] = True
+    system, user = build_rewrite_full_chapter_prompt(
+        chapter_text=text,
+        findings=findings,
+        style_keywords=style_keywords,
+    )
+    model_name = cfg.model if cfg else "mock"
+    req = LLMRequest(
+        messages=[LLMMessage(role="system", content=system), LLMMessage(role="user", content=user)],
+        model=model_name,
+        temperature=0.5,
+        max_tokens=4096,
+        stream=False,
+    )
+    llm = get_llm_service()
+    try:
+        resp = await llm.chat(req, cfg)
+        rewritten = (resp.content or "").strip()
+    except LLMError as exc:
+        logger.warning("自动去味: LLM 失败 (%s),保留原文", exc)
+        base_report["rewrite_error"] = f"{exc.__class__.__name__}: {exc}"
+        base_report["elapsed_ms"] = int(time.time() * 1000) - start_ms
+        return text, base_report
+
+    # ===== 阶段 3:验收 =====
+    # 3a) 输出过短 → 视为没救,保留原文
+    if len(rewritten) < _AUTO_POLISH_MIN_OUTPUT_CHARS:
+        logger.warning(
+            "自动去味: LLM 输出过短(%d 字),保留原文",
+            len(rewritten),
+        )
+        base_report["rewrite_error"] = f"output_too_short: {len(rewritten)} chars"
+        base_report["elapsed_ms"] = int(time.time() * 1000) - start_ms
+        return text, base_report
+
+    # 3b) 再跑一次检测,记录 remaining blocking
+    post_findings = detector.detect(rewritten)
+    final_blocking = sum(1 for f in post_findings if f.severity == Severity.BLOCKING)
+    base_report["final_blocking"] = final_blocking
+    base_report["elapsed_ms"] = int(time.time() * 1000) - start_ms
+    base_report["rewrite_succeeded"] = True
+
+    logger.info(
+        "自动去味: blocking %d → %d (advisory %d → %d), elapsed %dms",
+        blocking_count,
+        final_blocking,
+        advisory_count,
+        sum(1 for f in post_findings if f.severity == Severity.ADVISORY),
+        base_report["elapsed_ms"],
+    )
+    return rewritten, base_report
 
 
 # ==================== 持久化辅助 ====================

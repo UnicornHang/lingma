@@ -234,8 +234,29 @@ export default function ChapterEditorPage() {
     // 刷新版本列表
     if (chapterId) versionsQuery.refetch();
     message.success(`Writer Agent 已续写 ${cleaned.length} 字`);
+
+    // [提交 C] 自动去味结果提示 + 预填 findings state
+    const report = generation.autoPolishReport;
+    if (report) {
+      if (report.rewrite_attempted && report.rewrite_succeeded) {
+        const fixed = report.blocking_count - (report.final_blocking ?? 0);
+        message.success(
+          `已自动去除 ${fixed} 处 AI 痕迹 (${report.blocking_count}→${report.final_blocking})`
+        );
+      } else if (report.rewrite_attempted && !report.rewrite_succeeded) {
+        message.warning(
+          `自动去味未成功:${report.rewrite_error ?? '未知原因'},可手动润色`
+        );
+      }
+      // 把 findings 预填到 editorFindings state,用户在 AI 去味 Modal 里可直接看到
+      if (report.pre_findings && report.pre_findings.length > 0) {
+        setEditorFindings(report.pre_findings as any);
+        setEditorBlockingCount(report.blocking_count);
+        setEditorAdvisoryCount(report.advisory_count);
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generation.status, generation.content]);
+  }, [generation.status, generation.content, generation.autoPolishReport]);
 
   // 错误状态
   useEffect(() => {

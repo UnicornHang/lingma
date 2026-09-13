@@ -1,12 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWebSocket } from './useWebSocket';
+import type { AutoPolishReport } from '@/api/chapters';
 
 /** 与 docs/API.md 一致的 WS 服务端推送类型 */
 export type GenerationServerEvent =
   | { type: 'connected'; task_id: string; message?: string }
   | { type: 'start'; task_id: string; stream_id: string; model: string; mode?: 'continue' | 'generate' }
   | { type: 'delta'; task_id: string; stream_id: string; content: string }
-  | { type: 'done'; task_id: string; stream_id: string; content: string; token_usage?: { input_tokens: number; output_tokens: number }; mode?: 'continue' | 'generate' }
+  | {
+      type: 'done';
+      task_id: string;
+      stream_id: string;
+      content: string;
+      token_usage?: { input_tokens: number; output_tokens: number };
+      mode?: 'continue' | 'generate';
+      /** [提交 C] 自动去味报告(若开启) */
+      auto_polish_report?: AutoPolishReport | null;
+    }
   | { type: 'error'; task_id?: string; stream_id?: string; error: string }
   | { type: 'cancelled'; task_id: string }
   | { type: 'pong' };
@@ -21,6 +31,10 @@ export interface GenerationClientStartMessage {
   mode?: 'continue' | 'generate';
   continue_from_chars?: number;
   target_word_count?: number;
+  /** [提交 C] 是否启用自动去味(默认 true) */
+  auto_polish?: boolean;
+  /** [提交 C] blocking 阈值 */
+  max_blocking_for_rewrite?: number;
 }
 
 export type GenerationClientMessage =
@@ -40,6 +54,10 @@ export interface GenerationStartOpts {
   continue_from_chars?: number;
   /** 本次生成目标字数（覆盖 outline 默认） */
   target_word_count?: number;
+  /** [提交 C] 自动去味开关(默认 true) */
+  auto_polish?: boolean;
+  /** [提交 C] blocking 阈值 */
+  max_blocking_for_rewrite?: number;
   /** 每个 delta 到达时的回调（用于实时插入编辑器） */
   onDelta?: (chunk: string) => void;
 }
@@ -59,6 +77,8 @@ interface UseGenerationStreamReturn {
   error: string | null;
   /** 当前模型 */
   model: string | null;
+  /** [提交 C] 自动去味报告(done 时填充) */
+  autoPolishReport: AutoPolishReport | null;
   /**
    * 注册「待发 start 意图」。Hook 内部 effect 会在 WS 进入 OPEN 时自动发送。
    * 多次调用以最新一次为准。StrictMode 双连接场景下安全:
@@ -105,6 +125,8 @@ export function useGenerationStream(
   const [content, setContent] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
+  // [提交 C] 自动去味报告(done 时填充)
+  const [autoPolishReport, setAutoPolishReport] = useState<AutoPolishReport | null>(null);
 
   // 防止卸载后仍然 setState
   const mountedRef = useRef(true);
@@ -157,6 +179,7 @@ export function useGenerationStream(
           setContent('');
           setError(null);
           setModel(lastMessage.model);
+          setAutoPolishReport(null);
         });
         break;
       case 'delta':
@@ -170,6 +193,7 @@ export function useGenerationStream(
         safe(() => {
           setContent(lastMessage.content);
           setStatus('done');
+          setAutoPolishReport(lastMessage.auto_polish_report ?? null);
         });
         break;
       case 'error':
@@ -213,6 +237,8 @@ export function useGenerationStream(
       mode: opts?.mode,
       continue_from_chars: opts?.continue_from_chars,
       target_word_count: opts?.target_word_count,
+      auto_polish: opts?.auto_polish,
+      max_blocking_for_rewrite: opts?.max_blocking_for_rewrite,
     };
     send(payload);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -247,6 +273,8 @@ export function useGenerationStream(
           mode: opts?.mode,
           continue_from_chars: opts?.continue_from_chars,
           target_word_count: opts?.target_word_count,
+          auto_polish: opts?.auto_polish,
+          max_blocking_for_rewrite: opts?.max_blocking_for_rewrite,
         };
         send(payload);
       }
@@ -267,8 +295,9 @@ export function useGenerationStream(
     setContent('');
     setError(null);
     setModel(null);
+    setAutoPolishReport(null);
     optsRef.current = null;
   }, []);
 
-  return { status, content, error, model, start, cancel, reset };
+  return { status, content, error, model, autoPolishReport, start, cancel, reset };
 }

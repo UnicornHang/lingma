@@ -67,6 +67,30 @@ export interface GenerateChapterRequest {
   mode?: GenerateMode;
   /** 续写模式下取章节末尾最近 N 字作为 prompt 上下文（默认 1500） */
   continue_from_chars?: number;
+  /** [提交 C] 生成完成后是否自动跑 AI 痕迹检测与去味（默认开） */
+  auto_polish?: boolean;
+  /** [提交 C] blocking finding 阈值,达到/超过即触发自动重写;默认 0 */
+  max_blocking_for_rewrite?: number;
+}
+
+/** [提交 C] 自动去味报告 —— WS done 事件附带的元数据 */
+export interface AutoPolishReport {
+  blocking_count: number;
+  advisory_count: number;
+  rewrite_attempted: boolean;
+  rewrite_succeeded: boolean;
+  rewrite_error: string | null;
+  final_blocking: number | null;
+  pre_findings: Array<{
+    category: string;
+    severity: string;
+    start: number;
+    end: number;
+    snippet: string;
+    message: string;
+    rule: string;
+  }>;
+  elapsed_ms: number;
 }
 
 export interface GenerateChapterResponse {

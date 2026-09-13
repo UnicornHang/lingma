@@ -77,6 +77,17 @@ class GenerateChapterRequest(BaseModel):
         le=5000,
         description="续写模式下，取章节末尾最近 N 字作为 prompt 上下文",
     )
+    # [提交 C] 自动去味开关:生成完成后跑 AI 痕迹检测,blocking 超阈值自动重写一次
+    auto_polish: bool = Field(
+        True,
+        description="生成完成后是否自动跑 AI 痕迹检测与去味(默认开)",
+    )
+    max_blocking_for_rewrite: int = Field(
+        0,
+        ge=0,
+        le=20,
+        description="blocking finding 阈值,达到/超过即触发自动重写;默认 0 即单条就触发",
+    )
 
 
 class GenerationStreamEvent(BaseModel):

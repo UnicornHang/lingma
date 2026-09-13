@@ -116,3 +116,57 @@ def build_editor_user_prompt(
 def format_findings_for_prompt(findings: list["PatternFinding"]) -> str:
     """把 findings 序列化为可读 JSON(供日志/调试)。"""
     return json.dumps([f.to_dict() for f in findings], ensure_ascii=False, indent=2)
+
+
+# ==================== 提交 C:整章重写 prompt(自动去味) ====================
+
+
+def build_rewrite_full_chapter_prompt(
+    chapter_text: str,
+    findings: list["PatternFinding"],
+    style_keywords: list[str] | None = None,
+) -> tuple[str, str]:
+    """返回 (system, user) — 让 LLM 整章重写以消除 AI 痕迹。
+
+    与 ``build_editor_user_prompt`` 的区别:
+    - 后者要求逐条给 JSON 改写映射,适合人工审批的 polish 场景
+    - 本函数要求 LLM **直接输出改写后的整章正文**,适合生成管线的自动去味阶段
+
+    适用场景:生成完成 → 检测出 blocking finding → 服务端在 done 之前自动重写一次
+    """
+    style_line = ""
+    if style_keywords:
+        style_line = f"【文风锚】贴合关键词:{('、'.join(style_keywords))}。\n"
+
+    system = dedent(
+        """\
+        你是一位资深中文网络小说编辑,擅长在不破坏原意的前提下消除 AI 生成痕迹。
+        你将收到一段章节正文与检测器产出的 finding 列表。
+        你的任务是:**直接输出改写后的整章正文**(纯文本,不要 Markdown 标题、不要解释)。
+
+        硬性约束:
+        1. 必须处理所有阻断类(blocking)finding:删除否定铺垫、把"是A,不是B"换成单一陈述、
+           把"声音不高却"换成动作或直接陈述、把章尾"这一夜注定/命运的齿轮"换成场景或留白。
+        2. **不要修改未在 finding 中标出的句子** —— 你的工作是"去 AI 味",不是改稿。
+        3. 不要加入新设定、新角色、新剧情。
+        4. 不要输出 markdown fence;不要输出"改写后正文:"之类的标题;直接第一行开始就是正文。
+        5. 字数偏差不超过原章节 ±15%。
+        6. 保留所有对话与已有设定。
+        """
+    ).strip()
+
+    finding_lines = []
+    for i, f in enumerate(findings, 1):
+        sev = f.severity.value if hasattr(f.severity, "value") else f.severity
+        finding_lines.append(
+            f"[{i}] {f.category}({sev}): {f.snippet} —— {f.message}"
+        )
+    findings_block = "\n".join(finding_lines) if finding_lines else "(无)"
+
+    user = (
+        f"{style_line}\n"
+        f"【待改写章节正文】\n{chapter_text}\n\n"
+        f"【finding 列表(共 {len(findings)} 条)】\n{findings_block}\n\n"
+        f"请直接输出改写后的整章正文(纯文本,不要任何元数据):"
+    )
+    return system, user
