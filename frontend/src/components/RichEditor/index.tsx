@@ -45,6 +45,13 @@ export interface RichEditorHandle {
   getText: () => string;
   /** 聚焦编辑器 */
   focus: () => void;
+  // [提交 D] 选区/段落级操作 —— 用于行内 AI 改写 / 段内润色建议
+  /** 当前选区:{from, to, text}。折叠选区(光标)返回 null */
+  getSelection: () => { from: number; to: number; text: string } | null;
+  /** 把 [from, to) 区间替换为 text(纯文本),触发 onChange */
+  replaceRange: (from: number, to: number, text: string) => boolean;
+  /** 获取光标所在自然段:{from, to, text}。无段落返回 null */
+  getCurrentParagraph: () => { from: number; to: number; text: string } | null;
 }
 
 interface RichEditorProps {
@@ -54,8 +61,8 @@ interface RichEditorProps {
   editable?: boolean;
   /** 内容变更回调（TipTap JSON + 纯文本） */
   onChange?: (json: TipTapDoc, plain: string) => void;
-  /** 选区变化回调 */
-  onSelectionChange?: (range: { from: number; to: number }) => void;
+  /** 选区变化回调 —— text 为折叠选区时为 '' */
+  onSelectionChange?: (range: { from: number; to: number; text: string }) => void;
   /** 类名 */
   className?: string;
 }
@@ -85,7 +92,9 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(function
     },
     onSelectionUpdate: ({ editor }) => {
       const { from, to } = editor.state.selection;
-      onSelectionChange?.({ from, to });
+      // [提交 D] 回调里附带选区文本(折叠选区时 text='')
+      const text = from === to ? '' : editor.state.doc.textBetween(from, to, '\n', '\n');
+      onSelectionChange?.({ from, to, text });
     },
     editorProps: {
       attributes: {
@@ -114,6 +123,36 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(function
       getText: () => editor?.getText() ?? '',
       focus: () => {
         editor?.commands.focus('end');
+      },
+      // [提交 D] 选区/段落级操作
+      getSelection: () => {
+        if (!editor) return null;
+        const { from, to } = editor.state.selection;
+        if (from === to) return null;
+        const text = editor.state.doc.textBetween(from, to, '\n', '\n');
+        return { from, to, text };
+      },
+      replaceRange: (from: number, to: number, text: string) => {
+        if (!editor) return false;
+        // insertContentAt 在 from===to 时等价于纯插入,正常返回 true
+        return editor.chain().focus().insertContentAt({ from, to }, text).run();
+      },
+      getCurrentParagraph: () => {
+        if (!editor) return null;
+        const { from } = editor.state.selection;
+        // 解析光标位置,向上找最近的 block 节点(paragraph/heading)
+        const $pos = editor.state.doc.resolve(from);
+        for (let depth = $pos.depth; depth > 0; depth--) {
+          const node = $pos.node(depth);
+          if (node.type.name === 'paragraph' || node.type.name === 'heading') {
+            const start = $pos.start(depth);
+            const end = $pos.end(depth);
+            if (start === end) return null;
+            const text = editor.state.doc.textBetween(start, end, '\n', '\n');
+            return { from: start, to: end, text };
+          }
+        }
+        return null;
       },
     }),
     [editor]

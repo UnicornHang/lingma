@@ -94,6 +94,17 @@ export default function ChapterEditorPage() {
   const [editorSummary, setEditorSummary] = useState('');
   const [editorBlockingCount, setEditorBlockingCount] = useState(0);
   const [editorAdvisoryCount, setEditorAdvisoryCount] = useState(0);
+  // [提交 D] 选区/段落级润色 —— 行内 AI 改写 / 段内润色建议
+  const [selection, setSelection] = useState<{ from: number; to: number; text: string } | null>(null);
+  const [selectionPolishLoading, setSelectionPolishLoading] = useState(false);
+  const [selectionPolishOpen, setSelectionPolishOpen] = useState(false);
+  const [selectionPolishFindings, setSelectionPolishFindings] = useState<PatternFinding[]>([]);
+  const [selectionPolishRewrites, setSelectionPolishRewrites] = useState<PolishRewrite[]>([]);
+  const [selectionPolishedText, setSelectionPolishedText] = useState('');
+  const [selectionPolishSummary, setSelectionPolishSummary] = useState('');
+  const [selectionPolishRange, setSelectionPolishRange] = useState<{ from: number; to: number } | null>(null);
+  // 浮动气泡定位:相对视口的 x/y
+  const [bubblePos, setBubblePos] = useState<{ x: number; y: number } | null>(null);
 
   const saveTimerRef = useRef<number | null>(null);
   const editorRef = useRef<RichEditorHandle>(null);
@@ -345,6 +356,127 @@ export default function ChapterEditorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorPolishedText, message]);
 
+  // ==================== [提交 D] 选区/段落级润色 ====================
+
+  // 选区变化 → 算气泡坐标
+  const handleSelectionChange = useCallback(
+    (range: { from: number; to: number; text: string }) => {
+      if (range.from === range.to || !range.text.trim()) {
+        setSelection(null);
+        setBubblePos(null);
+        return;
+      }
+      setSelection(range);
+      // 用原生 window.getSelection() 拿 boundingClientRect —— 比 editor.view.coordsAtPos 更稳
+      const domSel = window.getSelection();
+      if (domSel && domSel.rangeCount > 0) {
+        const rect = domSel.getRangeAt(0).getBoundingClientRect();
+        if (rect.width > 0 || rect.height > 0) {
+          setBubblePos({ x: rect.left + rect.width / 2, y: rect.top });
+        }
+      }
+    },
+    [],
+  );
+
+  // 选区级 AI 改写(调 polish)
+  const handleSelectionRewrite = useCallback(async () => {
+    if (!selection || !selection.text.trim()) return;
+    setSelectionPolishLoading(true);
+    setSelectionPolishRange({ from: selection.from, to: selection.to });
+    setSelectionPolishOpen(true);
+    // 重置 state,显示 loading
+    setSelectionPolishFindings([]);
+    setSelectionPolishRewrites([]);
+    setSelectionPolishedText('');
+    setSelectionPolishSummary('');
+    try {
+      const result = await chaptersApi.polish({ text: selection.text });
+      setSelectionPolishFindings(result.findings);
+      setSelectionPolishRewrites(result.rewrites);
+      setSelectionPolishedText(result.polished_text);
+      setSelectionPolishSummary(result.summary);
+      if (result.rewrites.length === 0 && result.findings.length > 0) {
+        message.warning('已生成检测报告,但 LLM 改写未产出(可能未配置 API Key)');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      message.error(`改写失败:${msg}`);
+      setSelectionPolishOpen(false);
+    } finally {
+      setSelectionPolishLoading(false);
+    }
+  }, [selection, message]);
+
+  // 选区级 AI 检测(纯本地,无 LLM)
+  const handleSelectionAnalyze = useCallback(async () => {
+    if (!selection || !selection.text.trim()) return;
+    setSelectionPolishLoading(true);
+    setSelectionPolishRange({ from: selection.from, to: selection.to });
+    setSelectionPolishOpen(true);
+    setSelectionPolishFindings([]);
+    setSelectionPolishRewrites([]);
+    setSelectionPolishedText('');
+    try {
+      const result = await chaptersApi.analyzeAIPatterns(selection.text);
+      setSelectionPolishFindings(result.findings);
+      setSelectionPolishSummary(
+        `本段共 ${result.findings.length} 处问题(${result.blocking_count} 阻断 / ${result.advisory_count} 建议)`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      message.error(`检测失败:${msg}`);
+      setSelectionPolishOpen(false);
+    } finally {
+      setSelectionPolishLoading(false);
+    }
+  }, [selection, message]);
+
+  /** 把选区级 polished_text 应用到 [from, to) 区间 */
+  const handleApplySelectionPolish = useCallback(() => {
+    if (!selectionPolishRange || !selectionPolishedText) return;
+    const { from, to } = selectionPolishRange;
+    const ok = editorRef.current?.replaceRange(from, to, selectionPolishedText);
+    if (ok) {
+      setDirty(true);
+      setPlainText(editorRef.current?.getText() ?? '');
+      setSelectionPolishOpen(false);
+      setSelection(null);
+      setBubblePos(null);
+      message.success('已应用润色结果到选区');
+    }
+  }, [selectionPolishRange, selectionPolishedText, message]);
+
+  // 段落级(光标所在段)快速检测
+  const handleParagraphAnalyze = useCallback(async () => {
+    const para = editorRef.current?.getCurrentParagraph();
+    if (!para || !para.text.trim()) {
+      message.warning('当前光标不在自然段内');
+      return;
+    }
+    // 把选区 state 设到段落,后续走 handleSelectionAnalyze 的逻辑
+    setSelection(para);
+    setSelectionPolishLoading(true);
+    setSelectionPolishRange({ from: para.from, to: para.to });
+    setSelectionPolishOpen(true);
+    setSelectionPolishFindings([]);
+    setSelectionPolishRewrites([]);
+    setSelectionPolishedText('');
+    try {
+      const result = await chaptersApi.analyzeAIPatterns(para.text);
+      setSelectionPolishFindings(result.findings);
+      setSelectionPolishSummary(
+        `本段共 ${result.findings.length} 处问题(${result.blocking_count} 阻断 / ${result.advisory_count} 建议)`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      message.error(`检测失败:${msg}`);
+      setSelectionPolishOpen(false);
+    } finally {
+      setSelectionPolishLoading(false);
+    }
+  }, [message]);
+
   // 字数显示
   const wordCount = useMemo(() => plainText.length, [plainText]);
   const isStreaming = generation.status === 'streaming' || generation.status === 'connecting' || generation.status === 'ready';
@@ -582,6 +714,15 @@ export default function ChapterEditorPage() {
             >
               AI 去味
             </Button>
+            <Button
+              size="small"
+              icon={<FileText size={16} />}
+              onClick={handleParagraphAnalyze}
+              disabled={isStreaming || !plainText.trim()}
+              title="对光标所在段做 AI 痕迹检测"
+            >
+              本段检测
+            </Button>
             <span className="px-2 py-1 text-body-sm text-on-surface-variant">提示词</span>
 
             {/* [P4] 版本下拉 */}
@@ -649,6 +790,7 @@ export default function ChapterEditorPage() {
                 content={content}
                 editable={!isStreaming}
                 onChange={handleEditorChange}
+                onSelectionChange={handleSelectionChange}
               />
             )}
           </div>
@@ -1032,6 +1174,177 @@ export default function ChapterEditorPage() {
               <div className="p-3 rounded-lg bg-surface-container-low text-body-sm text-on-surface">
                 <span className="text-label-md text-on-surface-variant">总结: </span>
                 {editorSummary}
+              </div>
+            )}
+          </div>
+        </Spin>
+      </Modal>
+
+      {/* [提交 D] 浮动气泡 —— 选区上方出现,提供 "AI 改写 / AI 检测" 入口 */}
+      {bubblePos && selection && selection.text.trim() && !isStreaming && (
+        <div
+          style={{
+            position: 'fixed',
+            top: Math.max(8, bubblePos.y - 44),
+            left: Math.max(8, bubblePos.x - 80),
+            zIndex: 1000,
+          }}
+          className="flex items-center gap-1 px-1 py-1 rounded-lg bg-surface-container-lowest border border-outline-variant/50 shadow-L2-card"
+          onMouseDown={(e) => e.preventDefault() /* 防止按钮抢焦点、丢失选区 */}
+        >
+          <Button
+            type="primary"
+            size="small"
+            icon={<Sparkles size={14} />}
+            onClick={handleSelectionRewrite}
+            title="调用 LLM 改写选区文本"
+          >
+            AI 改写
+          </Button>
+          <Button
+            size="small"
+            icon={<AlertTriangle size={14} />}
+            onClick={handleSelectionAnalyze}
+            title="检测选区中的 AI 痕迹(无 LLM 调用)"
+          >
+            AI 检测
+          </Button>
+        </div>
+      )}
+
+      {/* [提交 D] 段内润色建议 Modal —— 选区级 polish/analyze 的结果展示 */}
+      <Modal
+        title={
+          <Space>
+            <Sparkles size={18} className="text-primary" />
+            <span>段内润色建议</span>
+            {(() => {
+              const blocking = selectionPolishFindings.filter((f) => f.severity === 'blocking').length;
+              const advisory = selectionPolishFindings.filter((f) => f.severity === 'advisory').length;
+              if (blocking + advisory === 0) return null;
+              return (
+                <Space size={4}>
+                  {blocking > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-label-sm bg-error-container text-on-error-container">
+                      {blocking} 阻断
+                    </span>
+                  )}
+                  {advisory > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-label-sm bg-tertiary-container text-on-tertiary-container">
+                      {advisory} 建议
+                    </span>
+                  )}
+                </Space>
+              );
+            })()}
+          </Space>
+        }
+        open={selectionPolishOpen}
+        onCancel={() => setSelectionPolishOpen(false)}
+        footer={
+          <Space>
+            <Button onClick={() => setSelectionPolishOpen(false)}>关闭</Button>
+            {selectionPolishRewrites.length === 0 && selectionPolishFindings.length > 0 && !selectionPolishedText && (
+              <Button
+                type="primary"
+                icon={<Sparkles size={14} />}
+                loading={selectionPolishLoading}
+                onClick={handleSelectionRewrite}
+                title="基于检测结果调 LLM 改写选区"
+              >
+                改写本段
+              </Button>
+            )}
+            {selectionPolishedText && (
+              <Button
+                type="primary"
+                icon={<CheckCircle2 size={14} />}
+                onClick={handleApplySelectionPolish}
+                disabled={!selectionPolishedText}
+              >
+                应用到选区
+              </Button>
+            )}
+          </Space>
+        }
+        width={720}
+        destroyOnClose
+      >
+        <Spin spinning={selectionPolishLoading} tip={selectionPolishLoading ? (selectionPolishedText ? '改写中…' : '检测中…') : ''}>
+          <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-2">
+            {selectionPolishRange && (
+              <div className="p-2 rounded bg-surface-container-low text-body-xs text-on-surface-variant font-mono">
+                选区: [{selectionPolishRange.from}, {selectionPolishRange.to}] · 长度 {selectionPolishRange.to - selectionPolishRange.from}
+              </div>
+            )}
+
+            {selectionPolishFindings.length === 0 && !selectionPolishLoading && (
+              <div className="p-4 rounded-lg bg-tertiary-container/30 border-l-4 border-tertiary">
+                <p className="text-body-sm text-on-surface">
+                  ✓ 未在选区中检测到典型 AI 痕迹,这段看起来比较自然。
+                </p>
+              </div>
+            )}
+
+            {selectionPolishFindings.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {selectionPolishFindings.map((f, i) => (
+                  <div
+                    key={i}
+                    className={`p-3 rounded-lg border-l-4 ${
+                      f.severity === 'blocking'
+                        ? 'bg-error-container/40 border-error'
+                        : 'bg-tertiary-container/40 border-tertiary'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`px-2 py-0.5 rounded text-label-sm font-mono ${
+                          f.severity === 'blocking'
+                            ? 'bg-error text-on-error'
+                            : 'bg-tertiary text-on-tertiary'
+                        }`}
+                      >
+                        {f.severity === 'blocking' ? '阻断' : '建议'}
+                      </span>
+                      <span className="font-code-xs text-on-surface-variant">{f.category}</span>
+                      <span className="text-label-sm text-on-surface-variant">[{f.start}-{f.end}]</span>
+                    </div>
+                    <p className="text-body-sm text-on-surface mt-1">{f.message}</p>
+                    <pre className="mt-1 px-2 py-1 rounded bg-surface-container-lowest text-body-xs font-mono text-on-surface-variant whitespace-pre-wrap break-all">
+                      {f.snippet}
+                    </pre>
+                    {selectionPolishRewrites[i] && selectionPolishRewrites[i].rewritten !== selectionPolishRewrites[i].original && (
+                      <div className="mt-2 p-2 rounded bg-tertiary-fixed/30">
+                        <div className="text-label-xs text-on-surface-variant mb-1">改写后:</div>
+                        <p className="text-body-sm text-on-surface whitespace-pre-wrap">
+                          {selectionPolishRewrites[i].rewritten}
+                        </p>
+                        {selectionPolishRewrites[i].reason && (
+                          <p className="text-body-xs text-on-surface-variant mt-1 italic">
+                            理由: {selectionPolishRewrites[i].reason}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selectionPolishedText && (
+              <div className="p-3 rounded-lg bg-surface-container-low">
+                <div className="text-label-md text-on-surface-variant mb-1">改写后全文:</div>
+                <pre className="whitespace-pre-wrap text-body-sm text-on-surface font-mono">
+                  {selectionPolishedText}
+                </pre>
+              </div>
+            )}
+
+            {selectionPolishSummary && (
+              <div className="p-3 rounded-lg bg-surface-container-low text-body-sm text-on-surface">
+                <span className="text-label-md text-on-surface-variant">总结: </span>
+                {selectionPolishSummary}
               </div>
             )}
           </div>

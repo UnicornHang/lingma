@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
@@ -9,6 +10,12 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+  },
+  // [提交 D] vitest 配置 —— happy-dom 提供 DOM 环境,用于 RichEditor 句柄单测
+  test: {
+    environment: 'happy-dom',
+    globals: true,
+    include: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.{ts,tsx}'],
   },
   server: {
     port: 5173,
