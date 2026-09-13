@@ -4,7 +4,10 @@ MVP：基于预定义 DAG 串行调用 6 个 Agent。
      后续可替换为 LangGraph 状态机实现更复杂的分支与回滚。
 """
 import logging
-from typing import Any, Callable, Awaitable
+from typing import Any, Awaitable, Callable
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import AGENT_REGISTRY, create_agent
 
@@ -19,6 +22,31 @@ class Orchestrator:
 
     def __init__(self) -> None:
         self.registry = dict(AGENT_REGISTRY)
+
+    async def run_chapter_prefill(
+        self,
+        db: AsyncSession,
+        work_id: UUID,
+        *,
+        on_progress: Callable[[dict], Awaitable[None]] | None = None,
+        target_chapter_count: int = 10,
+        character_count: int = 3,
+    ) -> dict[str, Any]:
+        """章节生成前的预填:智能跳过已有数据,补全 plot/world/character。
+
+        通过 app.agents.preflight.run_chapter_prefill 实现。
+        任一 stage 失败 → 仅 warning,不阻断 writer。
+        """
+        # 局部 import 避免循环依赖
+        from app.orchestrator.preflight import run_chapter_prefill
+
+        return await run_chapter_prefill(
+            db,
+            work_id,
+            on_progress=on_progress,
+            target_chapter_count=target_chapter_count,
+            character_count=character_count,
+        )
 
     async def run_pipeline(
         self,

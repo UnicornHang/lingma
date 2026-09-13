@@ -40,6 +40,7 @@ from app.agents.writer_agent import WriterAgent
 from app.db.session import async_session_factory
 from app.models.chapter import Chapter, ChapterStatus, ChapterVersion
 from app.models.task import GenerationTask, TaskStatus, TaskType
+from app.orchestrator import get_orchestrator
 from app.prompts.editor_prompts import build_rewrite_full_chapter_prompt
 from app.services.ai_pattern_detector import AIPatternDetector, Severity, summarize as summarize_findings
 from app.services.chapter_role_resolver import resolve_chapter_role
@@ -161,6 +162,12 @@ async def _handle_start(
             return
 
         chapter_id = task.chapter_id
+        # 加载 chapter 以便获取 work_id(P1-2 预填需要)
+        work_id = None
+        if chapter_id is not None:
+            ch_row = await db.get(Chapter, chapter_id)
+            if ch_row is not None:
+                work_id = ch_row.work_id
         agent_type = AGENT_FOR_TASK.get(task.task_type, "writer")
 
         # 解析 APIConfig（找不到则走 mock）
@@ -209,6 +216,29 @@ async def _handle_start(
         task.started_at = datetime.now(timezone.utc)
         await db.commit()
 
+    # [P1-2] 章节生成前预填:智能补全 plot / world / character(已有则跳过)
+    # 通过 on_progress 回调,实时向前端推送 stage 事件。
+    # 任一 stage 失败 → 仅 warning,不阻断 writer(graceful degradation)。
+    async def _emit_stage(payload: dict) -> None:
+        try:
+            await websocket.send_json({"type": "stage", "task_id": task_id, **payload})
+        except Exception as e:
+            logger.warning("stage 事件发送失败: %s", e)
+
+    prefill_results: dict | None = None
+    if work_id is not None:
+        try:
+            async with async_session_factory() as db:
+                prefill_results = await get_orchestrator().run_chapter_prefill(
+                    db,
+                    work_id,
+                    on_progress=_emit_stage,
+                )
+        except Exception as e:
+            logger.warning("preflight 整体失败(已忽略,继续 writer): %s", e, exc_info=True)
+    else:
+        logger.info("无 work_id(override_messages 或 chapter 未绑定),跳过 prefill")
+
     await websocket.send_json({
         "type": "start",
         "task_id": task_id,
@@ -217,6 +247,7 @@ async def _handle_start(
         "model": cfg.model if cfg else "mock",
         "provider": cfg.provider.value if cfg else "mock",
         "mode": mode,
+        "prefill": prefill_results,  # 供前端调试 / 后续决定是否阻塞
     })
 
     full_content = ""

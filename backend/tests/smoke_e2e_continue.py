@@ -73,6 +73,7 @@ async def main() -> None:
     # 4) WS 流程
     ws_url = f"{WS_BASE}{task['ws_url']}"
     events: list[dict] = []
+    stage_events: list[dict] = []
     delta_count = 0
     full = ""
     done_content = ""
@@ -94,8 +95,19 @@ async def main() -> None:
             raw = await ws.recv()
             ev = json.loads(raw)
             events.append(ev)
-            if ev["type"] == "start":
+            if ev["type"] == "stage":
+                stage_events.append(ev)
+                print(
+                    f"[ws] stage: {ev.get('stage')} status={ev.get('status')} "
+                    f"elapsed={ev.get('elapsed_ms', '-')} reason={ev.get('skipped_reason', '-')}"
+                )
+            elif ev["type"] == "start":
                 print(f"[ws] {ev['type']} model={ev.get('model')} mode={ev.get('mode')}")
+                # start 上的 prefill 字段(若有)
+                if ev.get("prefill"):
+                    print(f"[ws] prefill summary: plot={ev['prefill']['plot']['status']}, "
+                          f"world={ev['prefill']['world']['status']}, "
+                          f"character={ev['prefill']['character']['status']}")
             elif ev["type"] == "delta":
                 delta_count += 1
                 full += ev.get("content", "")
@@ -180,6 +192,8 @@ async def main() -> None:
         assert final_ch["status"] != "generated", "rollback should NOT mark as generated"
         assert not versions, "rollback should NOT write ChapterVersion"
         print("=== ROLLBACK PATH OK ===")
+        # [P1-2] 即使 rollback,prefill stage 事件也应已发出(在 start 之前)
+        _assert_prefill_events(stage_events)
         return
 
     # 正常生成路径:cleaned 内容充分,后续断言严格
@@ -189,8 +203,44 @@ async def main() -> None:
     ai_revised = [v for v in versions if v["generated_by"] == "ai_revised"]
     assert ai_revised, "should have at least one ai_revised row"
     assert "<think>" not in ai_revised[0]["plain_content"], "ChapterVersion.ai_revised should NOT contain <think>"
+    # [P1-2] prefill stage 事件校验
+    _assert_prefill_events(stage_events)
     print()
     print("=== ALL ASSERTIONS PASSED ===")
+
+
+def _assert_prefill_events(stage_events: list[dict]) -> None:
+    """[P1-2] 校验 prefill stage 事件序列。
+
+    期望:
+    - 至少收到 1 个 stage 事件(空 work → running/done;非空 → skipped)
+    - 至少看到 3 个不同 stage(plot/world/character)
+    - 状态值在 {running, done, skipped, error} 之内
+    """
+    print()
+    print(f"=== P1-2 Prefill Stage Events: {len(stage_events)} total ===")
+    for ev in stage_events:
+        print(f"  stage={ev.get('stage')!r:14s} status={ev.get('status')!r:10s} "
+              f"elapsed={ev.get('elapsed_ms', '-')!s:>6} reason={ev.get('skipped_reason', '-')!r}")
+
+    if not stage_events:
+        print("WARN: no stage events received (prefill may have been disabled or stage skipped all)")
+        return
+
+    stages = {ev.get("stage") for ev in stage_events}
+    valid_stages = {"plot", "world", "character"}
+    missing = valid_stages - stages
+    if missing:
+        # 允许部分缺失(比如已存在数据时部分 stage skip / fail)
+        print(f"NOTE: some stages missing from events: {missing}")
+
+    valid_statuses = {"running", "done", "skipped", "error"}
+    for ev in stage_events:
+        status = ev.get("status")
+        assert status in valid_statuses, f"invalid stage status: {status!r}"
+        assert "stage" in ev, "stage event must have 'stage' field"
+        assert ev.get("type") == "stage", f"type field must be 'stage', got {ev.get('type')!r}"
+    print("=== Prefill stage events OK ===")
 
 
 if __name__ == "__main__":
