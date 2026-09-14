@@ -16,10 +16,12 @@ services:
       - ./data/works:/app/data/works
       - ./data/vector_store:/app/data/vector_store
       - ./data/logs:/app/data/logs
+      - ./backups:/app/data/backups
       - ./.env:/app/.env:ro
     environment:
       - DATABASE_URL=sqlite+aiosqlite:////app/data/works/zhimeng.db
       - VECTOR_STORE_PATH=/app/data/vector_store
+      - BACKUP_DIR=/app/data/backups
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - APP_ENV=${APP_ENV:-production}
     env_file:

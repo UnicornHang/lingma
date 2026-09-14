@@ -1,11 +1,14 @@
-/** [P3.4] 作品导出 Modal —— 选格式 → 后端拉流 → 浏览器下载。 */
+/** [P3.4 / P3.5] 作品导出 Modal —— DOCX / EPUB / JSON 包。 */
 import { useState } from 'react';
 import { Button, Checkbox, Modal, Radio, Space, Spin, Tag, Typography, message } from 'antd';
-import { Download, FileText, BookOpen, AlertCircle } from 'lucide-react';
+import { Download, FileText, BookOpen, AlertCircle, Package } from 'lucide-react';
 
 import { downloadBlob, exportWork, type ExportFormat } from '@/api/export';
+import { downloadWorkPackage } from '@/api/backup';
 
 const { Text } = Typography;
+
+type ModalFormat = ExportFormat | 'json';
 
 interface ExportWorkModalProps {
   open: boolean;
@@ -27,7 +30,7 @@ export function ExportWorkModal({
   workId,
   workTitle,
 }: ExportWorkModalProps) {
-  const [format, setFormat] = useState<ExportFormat>('docx');
+  const [format, setFormat] = useState<ModalFormat>('docx');
   const [includeOutline, setIncludeOutline] = useState(true);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -40,7 +43,7 @@ export function ExportWorkModal({
   }
 
   function handleClose(): void {
-    if (busy) return; // 正在导出时禁止关闭
+    if (busy) return;
     reset();
     onClose();
   }
@@ -50,6 +53,18 @@ export function ExportWorkModal({
     setErrorMsg(null);
     setSuccess(null);
     try {
+      if (format === 'json') {
+        await downloadWorkPackage(workId, workTitle);
+        setSuccess({
+          filename: `${workTitle}_package.json`,
+          chapterCount: 0,
+          volumeCount: 0,
+          byteSize: 0,
+        });
+        message.success('已下载 JSON 作品包');
+        return;
+      }
+
       const { blob, headers } = await exportWork(workId, format, {
         include_outline: includeOutline,
       });
@@ -109,12 +124,11 @@ export function ExportWorkModal({
           《{workTitle}》
         </Text>
 
-        {/* 格式选择 */}
         <div className="mb-4">
           <div className="text-body-sm text-on-surface mb-2">格式</div>
           <Radio.Group
             value={format}
-            onChange={(e) => setFormat(e.target.value as ExportFormat)}
+            onChange={(e) => setFormat(e.target.value as ModalFormat)}
             disabled={busy}
           >
             <Space direction="vertical">
@@ -132,23 +146,30 @@ export function ExportWorkModal({
                   <Tag color="purple">电子阅读器</Tag>
                 </Space>
               </Radio>
+              <Radio value="json" data-testid="export-format-json">
+                <Space>
+                  <Package size={16} />
+                  <span>JSON 作品包</span>
+                  <Tag color="green">可再导入</Tag>
+                </Space>
+              </Radio>
             </Space>
           </Radio.Group>
         </div>
 
-        {/* 分卷选项 */}
-        <div className="mb-3">
-          <Checkbox
-            checked={includeOutline}
-            onChange={(e) => setIncludeOutline(e.target.checked)}
-            disabled={busy}
-            data-testid="export-include-outline"
-          >
-            按大纲分卷(无大纲时回退为单卷)
-          </Checkbox>
-        </div>
+        {format !== 'json' && (
+          <div className="mb-3">
+            <Checkbox
+              checked={includeOutline}
+              onChange={(e) => setIncludeOutline(e.target.checked)}
+              disabled={busy}
+              data-testid="export-include-outline"
+            >
+              按大纲分卷(无大纲时回退为单卷)
+            </Checkbox>
+          </div>
+        )}
 
-        {/* 错误展示 */}
         {errorMsg && (
           <div
             className="surface-card p-3 flex items-start gap-2 mb-3"
@@ -161,22 +182,20 @@ export function ExportWorkModal({
           </div>
         )}
 
-        {/* 成功展示 */}
         {success && (
-          <div
-            className="surface-card p-3"
-            data-testid="export-success"
-          >
+          <div className="surface-card p-3" data-testid="export-success">
             <div className="text-body-sm">
               <div className="font-medium mb-1">导出成功</div>
               <Text type="secondary" className="block">
                 文件: <span className="font-mono">{success.filename}</span>
               </Text>
-              <Text type="secondary" className="block">
-                大小: {(success.byteSize / 1024).toFixed(1)} KB ·{' '}
-                {success.chapterCount} 章
-                {success.volumeCount > 1 && ` · ${success.volumeCount} 卷`}
-              </Text>
+              {success.byteSize > 0 && (
+                <Text type="secondary" className="block">
+                  大小: {(success.byteSize / 1024).toFixed(1)} KB ·{' '}
+                  {success.chapterCount} 章
+                  {success.volumeCount > 1 && ` · ${success.volumeCount} 卷`}
+                </Text>
+              )}
             </div>
           </div>
         )}

@@ -1,15 +1,18 @@
 """ZhiMeng Backend - FastAPI 应用入口"""
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.db.session import close_db, init_db
+from app.db.session import async_session_factory, close_db, init_db
 from app.api.v1.router import api_router
+from app.services import backup_service
 
 # 配置日志
 logging.basicConfig(
@@ -21,10 +24,51 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# 自动备份后台任务句柄
+_auto_backup_task: asyncio.Task | None = None
+
+
+def _interval_delta(interval: str) -> timedelta:
+    """备份周期 → timedelta。"""
+    if interval == "weekly":
+        return timedelta(days=7)
+    if interval == "monthly":
+        return timedelta(days=30)
+    return timedelta(days=1)
+
+
+async def _auto_backup_loop() -> None:
+    """每小时检查一次;若开启自动备份且距上次超过周期则创建。"""
+    while True:
+        try:
+            await asyncio.sleep(3600)
+            async with async_session_factory() as db:
+                prefs = await backup_service.get_backup_prefs(db)
+                if not prefs.auto_backup:
+                    continue
+                items = backup_service.list_backup_files()
+                last = items[0].created_at if items else None
+                now = datetime.now(tz=timezone.utc)
+                due = last is None or (now - last) >= _interval_delta(prefs.interval)
+                if due:
+                    result = await backup_service.create_backup(db)
+                    await db.commit()
+                    logger.info(
+                        "自动备份完成: %s (pruned=%s)",
+                        result.backup.filename,
+                        result.pruned,
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("自动备份循环异常: %s", exc, exc_info=True)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    global _auto_backup_task
+
     # 启动
     logger.info("🚀 ZhiMeng Backend 启动中...")
     logger.info(f"环境: {settings.app_env}")
@@ -37,12 +81,21 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ 数据库初始化失败: {e}", exc_info=True)
         raise
 
+    _auto_backup_task = asyncio.create_task(_auto_backup_loop())
+    logger.info("✅ 自动备份调度已启动(每小时检查)")
     logger.info(f"✅ 服务就绪，监听端口: {settings.backend_port}")
 
     yield
 
     # 关闭
     logger.info("🛑 ZhiMeng Backend 关闭中...")
+    if _auto_backup_task is not None:
+        _auto_backup_task.cancel()
+        try:
+            await _auto_backup_task
+        except asyncio.CancelledError:
+            pass
+        _auto_backup_task = None
     await close_db()
     logger.info("✅ 资源清理完成")
 

@@ -1,14 +1,17 @@
 """作品 CRUD API"""
+import io
+import json
 from typing import Optional
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.deps import get_db
-from app.models.work import WorkStatus
+from app.models.work import Genre, WorkStatus
 from app.schemas.export import ExportFormat, ExportOptions
 from app.schemas.work import (
     WorkCreate,
@@ -16,9 +19,16 @@ from app.schemas.work import (
     WorkRead,
     WorkUpdate,
 )
+from app.schemas.work_package import ImportMode, WorkImportResult
 from app.services import work_service
 from app.services.chapter_service import list_chapters
 from app.services.export import get_exporter
+from app.services.work_package_service import (
+    export_work_package,
+    import_txt_as_work,
+    import_work_package,
+    parse_work_package,
+)
 
 router = APIRouter()
 
@@ -59,6 +69,81 @@ async def create_work_endpoint(
     await db.commit()
     await db.refresh(work)
     return WorkRead.model_validate(work)
+
+
+@router.post(
+    "/import",
+    response_model=WorkImportResult,
+    status_code=status.HTTP_201_CREATED,
+    summary="导入作品包(JSON)或纯文本(TXT)",
+)
+async def import_work_endpoint(
+    file: UploadFile = File(..., description="JSON 作品包或 TXT 文本"),
+    mode: ImportMode = Form(
+        default="create",
+        description="create=始终新建;overwrite=同 id 覆盖",
+    ),
+    title: Optional[str] = Form(
+        default=None,
+        description="TXT 导入时的作品标题(JSON 可忽略)",
+    ),
+    genre: Optional[str] = Form(
+        default=None,
+        description="TXT 导入时的题材",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> WorkImportResult:
+    """上传文件导入作品。
+
+    - `.json`: PRD 4.13.3 项目包
+    - `.txt`: 按空行分段为章节
+    """
+    raw = await file.read()
+    if len(raw) > settings.import_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"文件超过上限 {settings.import_max_bytes} 字节",
+        )
+
+    filename = (file.filename or "").lower()
+    try:
+        if filename.endswith(".json") or (file.content_type or "").endswith("json"):
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"JSON 解析失败: {exc}",
+                ) from exc
+            package = parse_work_package(payload)
+            result = await import_work_package(db, package, mode=mode)
+        elif filename.endswith(".txt") or (file.content_type or "").startswith("text/"):
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                text = raw.decode("gbk", errors="ignore")
+            g = Genre.OTHER
+            if genre:
+                try:
+                    g = Genre(genre)
+                except ValueError:
+                    g = Genre.OTHER
+            result = await import_txt_as_work(
+                db,
+                title=title or (file.filename or "TXT 导入作品").rsplit(".", 1)[0],
+                text=text,
+                genre=g,
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="仅支持 .json 或 .txt 文件",
+            )
+    except HTTPException:
+        raise
+
+    await db.commit()
+    return result
 
 
 @router.get(
@@ -138,6 +223,35 @@ _CHUNK_SIZE = 64 * 1024  # 64 KB streaming chunks
 
 
 @router.get(
+    "/{work_id}/package",
+    summary="导出作品 JSON 包(项目级备份)",
+    description="按 PRD 4.13.3 导出作品完整 JSON 包,可用于后续 /works/import 还原。",
+)
+async def export_work_package_endpoint(
+    work_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """导出作品为 JSON 附件。"""
+    package = await export_work_package(db, work_id)
+    payload = package.model_dump(mode="json")
+    title = str(payload.get("work_info", {}).get("title") or "work")
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in title)[:40]
+    filename = f"{safe or 'work'}_package.json"
+    body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=\"{filename}\"; "
+                f"filename*=UTF-8''{quote(filename)}"
+            ),
+            "Content-Length": str(len(body)),
+        },
+        media_type="application/json; charset=utf-8",
+    )
+
+
+@router.get(
     "/{work_id}/export/{fmt}",
     summary="导出作品(DOCX 或 EPUB)",
     description=(
@@ -197,8 +311,7 @@ async def export_work_endpoint(
 
     async def stream():
         # StreamingResponse 需要异步生成器;直接 yield 内存字节即可
-        # 用 io.BytesIO 切片避免一次性把大文件塞到响应对象里
-        with __import__("io").BytesIO(content) as buf:
+        with io.BytesIO(content) as buf:
             while True:
                 chunk = buf.read(_CHUNK_SIZE)
                 if not chunk:
@@ -206,8 +319,6 @@ async def export_work_endpoint(
                 yield chunk
 
     # RFC 5987 编码中文文件名 —— 同时给 ASCII fallback 防止旧浏览器乱码
-    from urllib.parse import quote
-
     headers = {
         "Content-Disposition": (
             f"attachment; filename=\"{filename.encode('ascii', 'replace').decode()}\"; "

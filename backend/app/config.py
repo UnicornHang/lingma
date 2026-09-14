@@ -77,6 +77,14 @@ class Settings(BaseSettings):
     # 留空则 EPUB CSS 只声明 font-family,不内嵌字体(包体小,跨平台字形回退)
     export_font_path: str = ""
 
+    # ===== [P3.5] 系统备份 / 作品包导入 =====
+    # 备份归档目录(相对路径相对进程 CWD;Docker 建议挂载 /app/data/backups)
+    backup_dir: str = "./backups"
+    # 默认保留份数(超出后按 mtime 删除最旧;UI 可覆盖写入 SettingsBundle)
+    backup_keep_default: int = 10
+    # 单次上传作品包最大字节(默认 50MB)
+    import_max_bytes: int = 50 * 1024 * 1024
+
 
 @lru_cache
 def get_settings() -> Settings:

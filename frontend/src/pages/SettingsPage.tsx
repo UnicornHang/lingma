@@ -52,6 +52,7 @@ import {
   type StylePreset,
   type StylePresetCreate,
 } from '@/api';
+import { BackupSettings } from '@/components/Settings/BackupSettings';
 
 const SUBNAV = [
   { to: '/settings/general', icon: Sliders, label: '常规设置' },
@@ -597,34 +598,6 @@ function AppearanceSettings() {
           </Form.Item>
         </Form>
       </SectionCard>
-    </div>
-  );
-}
-
-// =================================================================
-// ============== 数据备份占位 (保留) ==============
-// =================================================================
-
-function BackupSettings() {
-  return (
-    <div className="flex-1 h-full overflow-y-auto p-8 flex flex-col gap-6">
-      <div>
-        <h1 className="text-headline-lg font-bold text-on-surface">数据与备份</h1>
-        <p className="text-body-md text-on-surface-variant mt-1">
-          导入导出、即时备份、清理 —— 计划在后续版本提供。
-        </p>
-      </div>
-      <div className="surface-card p-6 flex flex-col gap-4">
-        <div className="flex items-center gap-1 pb-3 border-b border-outline-variant/40">
-          <Settings size={20} className="text-primary" />
-          <h2 className="text-headline-sm font-semibold text-on-surface">路线图</h2>
-        </div>
-        <ul className="text-body-md text-on-surface-variant list-disc pl-5 space-y-1">
-          <li>JSON + Markdown + TXT 三种格式导出</li>
-          <li>同名格式反向导入（合并 / 覆盖两种模式）</li>
-          <li>定期快照与本地备份目录管理</li>
-        </ul>
-      </div>
     </div>
   );
 }

@@ -1,7 +1,18 @@
 """v1 API 主路由"""
 from fastapi import APIRouter
 
-from app.api.v1 import chapters, characters, critic, outline, rag, settings, tasks, works, world
+from app.api.v1 import (
+    backup,
+    chapters,
+    characters,
+    critic,
+    outline,
+    rag,
+    settings,
+    tasks,
+    works,
+    world,
+)
 
 api_router = APIRouter()
 
@@ -15,3 +26,6 @@ api_router.include_router(critic.router, tags=["评审"])
 api_router.include_router(rag.router, tags=["RAG"])
 api_router.include_router(tasks.router, tags=["任务"])
 api_router.include_router(settings.router, prefix="/settings", tags=["设置"])
+api_router.include_router(
+    backup.router, prefix="/settings/backup", tags=["备份"]
+)
