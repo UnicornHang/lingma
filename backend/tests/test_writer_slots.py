@@ -198,7 +198,7 @@ def test_resolve_world_refs_hit_in_power_system():
 
 
 def test_assemble_slots_order_is_stable():
-    """11 个 slot 的顺序应稳定(防止回归)"""
+    """核心 slot 顺序应稳定(防止回归)"""
     asm = assemble_writer_slots(
         work=_stub_work(),
         chapter=_stub_chapter(),
@@ -218,6 +218,52 @@ def test_assemble_slots_order_is_stable():
     assert "【出场角色】" in titles
     assert "【上一章摘要】" in titles
     assert titles[-1] == "【本章任务】"
+
+
+def test_assemble_continuity_slots_before_prose_context():
+    """约束锁、角色状态、知情范围必须出现在任务 slot 之前。"""
+    from app.schemas.tracking import (
+        CharacterRuntimeState,
+        TimelineEvent,
+        WriteConstraints,
+        WriterContextCard,
+    )
+
+    card = WriterContextCard(
+        constraints=WriteConstraints(
+            must_happen=["当面对质"],
+            must_not_happen=["说出凶手身份"],
+        ),
+        character_states=[
+            CharacterRuntimeState(
+                character_id="1",
+                name="林轩",
+                unknown_facts=["信是哥哥寄的"],
+            )
+        ],
+        author_timeline=[TimelineEvent(text="凶手是哥哥")],
+        reader_timeline=[TimelineEvent(text="主角收到匿名信")],
+    )
+    asm = assemble_writer_slots(
+        work=_stub_work(),
+        chapter=_stub_chapter(),
+        outline=_stub_outline(),
+        world=None,
+        characters=[],
+        previous_summary=None,
+        existing_tail=None,
+        target_word_count=3000,
+        same_volume_outline=[],
+        world_refs=None,
+        continuity=card,
+    )
+    titles = asm.slot_titles()
+    assert titles.index("【本章约束锁】") < titles.index("【本章大纲】")
+    assert "【角色当前状态】" in titles
+    assert "【知情范围】" in titles
+    assert "不得把作者真相写成角色已知" in asm.user_text
+    assert "当面对质" in asm.user_text
+    assert "信是哥哥寄的" in asm.user_text
 
 
 def test_slot_truncation_keeps_truncated_marker_in_metadata():

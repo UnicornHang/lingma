@@ -51,6 +51,7 @@ from app.services.llm_service import (
     get_llm_service,
 )
 from app.services.rag_service import get_rag_service
+from app.services.tracking_service import build_writer_context_card
 from app.services.world_service import get_or_create_world_bible
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,7 @@ class WriterAgent(BaseAgent):
 
         # ===== RAG 检索（可优雅降级）=====
         rag_hits = await _search_rag_hits(db, chapter, outline)
+        continuity = await _load_continuity(db, chapter.work_id, outline, characters)
 
         target_words = (
             outline.target_word_count if outline and outline.target_word_count else 3000
@@ -139,6 +141,7 @@ class WriterAgent(BaseAgent):
             same_volume_outline=same_volume_outline,
             world_refs=(outline.world_refs if outline else None),
             rag_hits=rag_hits,
+            continuity=continuity,
         )
         messages = [LLMMessage(role="system", content=system), LLMMessage(role="user", content=user)]
 
@@ -197,8 +200,8 @@ class WriterAgent(BaseAgent):
         same_volume_outline = await _load_same_volume_outline(db, outline)
         previous_summary = await _load_previous_chapter_summary(db, chapter)
 
-        # ===== RAG 检索（可优雅降级）=====
         rag_hits = await _search_rag_hits(db, chapter, outline)
+        continuity = await _load_continuity(db, chapter.work_id, outline, characters)
 
         # 计算有效目标字数:请求 > outline > 默认 3000
         effective_target = target_word_count
@@ -253,6 +256,7 @@ class WriterAgent(BaseAgent):
             world_refs=(outline.world_refs if outline else None),
             reference_hints=hints,
             rag_hits=rag_hits,
+            continuity=continuity,
         )
         messages = [
             LLMMessage(role="system", content=system),
@@ -261,9 +265,9 @@ class WriterAgent(BaseAgent):
 
         # 简要统计 slot 数(从 user 文本倒推)
         slot_marks = [
-            "【作品总览】", "【文风裁决】", "【本章大纲】", "【Reference Gate 必读】",
-            "【同卷其他章节", "【世界书", "【世界条目", "【出场角色】",
-            "【RAG 向量检索补充】",
+            "【作品总览】", "【文风裁决】", "【本章约束锁】", "【本章大纲】", "【Reference Gate 必读】",
+            "【同卷其他章节", "【世界书", "【世界条目", "【出场角色】", "【角色当前状态】",
+            "【RAG 向量检索补充】", "【待收伏笔】", "【知情范围】",
             "【上一章摘要】", "【本章已有正文", "【本章任务】",
         ]
         slots_present = [m for m in slot_marks if m in user]
@@ -401,7 +405,20 @@ async def _load_previous_chapter_summary(db: AsyncSession, chapter: Chapter) -> 
     return prev.summary or (prev.plain_content[:300] if prev.plain_content else None)
 
 
-# ==================== RAG 检索辅助 ====================
+async def _load_continuity(
+    db: AsyncSession,
+    work_id: UUID,
+    outline: OutlineNode | None,
+    characters: list[Character],
+):
+    """加载写前连续性上下文卡；失败时降级为 None，不阻断写作。"""
+    try:
+        return await build_writer_context_card(
+            db, work_id, outline=outline, characters=characters
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("WriterAgent 追踪上下文加载失败(已降级): %s", exc)
+        return None
 
 
 async def _search_rag_hits(

@@ -35,6 +35,8 @@ class OutlineNode(Base, UUIDMixin, TimestampMixin):
     world_refs: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     target_word_count: Mapped[int] = mapped_column(Integer, default=3000, nullable=False)
     order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 本章约束锁：必发生 / 禁止发生 / 字数带 / 章尾新债（项目事实，优先于技法）
+    write_constraints: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     if TYPE_CHECKING:
         from app.models.work import Work

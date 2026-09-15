@@ -49,6 +49,7 @@ async def create_outline_node(db: AsyncSession, payload: OutlineNodeCreate) -> O
         world_refs=payload.world_refs,
         target_word_count=payload.target_word_count,
         order=payload.order,
+        write_constraints=payload.write_constraints.model_dump(),
     )
     db.add(node)
     await db.flush()
@@ -107,6 +108,10 @@ async def update_outline_node(
                 detail="父节点必须属于同一作品",
             )
     for key, value in data.items():
+        if key == "write_constraints" and value is not None and hasattr(value, "model_dump"):
+            value = value.model_dump()
+        elif key == "write_constraints" and isinstance(value, dict):
+            pass
         setattr(node, key, value)
     await db.flush()
     await db.refresh(node)

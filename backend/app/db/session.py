@@ -43,14 +43,30 @@ async def init_db() -> None:
         prompt_template,  # [P4]
         setting,
         task,
+        tracking,  # 连续性账本
         world,
         work,
     )
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_ensure_sqlite_columns)
 
     logger.info(f"数据库初始化完成: {settings.database_url}")
+
+
+def _ensure_sqlite_columns(sync_conn) -> None:
+    """为已有 SQLite 库补列（create_all 不会 ALTER 旧表）。"""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(sync_conn)
+    tables = set(insp.get_table_names())
+    if "outline_nodes" not in tables:
+        return
+    cols = {c["name"] for c in insp.get_columns("outline_nodes")}
+    if "write_constraints" not in cols:
+        sync_conn.execute(text("ALTER TABLE outline_nodes ADD COLUMN write_constraints JSON"))
+        logger.info("已为 outline_nodes 补列 write_constraints")
 
 
 async def close_db() -> None:

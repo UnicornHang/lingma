@@ -8,6 +8,7 @@ export * from './settings';
 export * from './backup';
 export * from './export';
 export * from './prompts';
+export * from './tracking';
 export { http, apiClient, checkHealth, ApiError } from './client';
 
 // 重新统一导出 Paginated（works 与 chapters 都定义了一个同名类型，避免重导出冲突）

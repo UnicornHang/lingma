@@ -51,6 +51,7 @@ async def _setup_database():
             prompt_template,  # [P4]
             setting,
             task,
+            tracking,
             world,
             work,
         )

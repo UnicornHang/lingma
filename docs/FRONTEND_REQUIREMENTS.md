@@ -1,8 +1,8 @@
 # 织梦 (ZhiMeng) — 前端开发需求文档
 
 > 项目代号：**ZhiMeng Novel Studio**
-> 文档版本：v1.0
-> 文档日期：2026-09-10
+> 文档版本：v1.1
+> 文档日期：2026-09-15
 > 适用模块：**前端应用（Frontend）**
 > 技术栈：React 18 + Vite + TypeScript + TipTap + Ant Design 5 + Tailwind CSS + Zustand
 > 配套文档：[PRD.md](PRD.md) · [BACKEND_REQUIREMENTS.md](BACKEND_REQUIREMENTS.md)
@@ -275,8 +275,8 @@ export default {
 
 ### 3.6 自研组件清单
 
-- `<WorkCard>` - 作品卡片
-- `<OutlineTree>` - 大纲树（基于 Antd Tree 定制）
+- `<WorldConsistencyPanel>` - 世界观启发式一致性
+- `<TrackingContinuityPanel>` - 角色运行时状态 / 伏笔账本
 - `<RichEditor>` - 富文本编辑器（基于 TipTap）
 - `<AIAssistant>` - AI 助手侧边栏
 - `<StreamingDisplay>` - 流式输出展示
@@ -632,6 +632,8 @@ Step 1: 选题材      Step 2: 选风格      Step 3: 输入核心     Step 4: A
 | 右键菜单 | 右键点击 | 复制 / 粘贴 / AI 操作 / 格式 |
 | `/ai` 命令 | 输入 `/ai` | 唤起 AI 命令面板 |
 | `Ctrl+S` | 快捷键 | 手动保存 |
+| 侧栏「角色」 | Tab | 展示运行时状态（位置/已知/未知），不是人设全文 |
+| 侧栏「伏笔」 | Tab | 读写连续性账本，登记未收/已兑现/断线 |
 | `Ctrl+Shift+A` | 快捷键 | 切换 AI 助手面板 |
 | `Ctrl+K` | 快捷键 | 全局搜索 |
 
@@ -655,6 +657,7 @@ Step 1: 选题材      Step 2: 选风格      Step 3: 输入核心     Step 4: A
 │                    │   □ 阶段高潮                              │
 │  [+ 新建节点]       │  涉及人物：[林墨] [苏婉] [云浩]            │
 │                    │  目标字数：3000                            │
+│                    │  必须发生 / 禁止发生 / 章尾新债（约束锁）     │
 │                    │  [生成章节 →]                              │
 └──────────────────┴─────────────────────────────────────────┘
 ```
@@ -1413,6 +1416,17 @@ export const worksApi = {
       responseType: 'blob',
     }),
 };
+
+// src/api/tracking.ts
+export const trackingApi = {
+  get: (workId: string, outlineNodeId?: string) =>
+    apiClient.get(`/works/${workId}/tracking`, { params: { outline_node_id: outlineNodeId } }),
+  commit: (workId: string, data: TrackingCommitPayload) =>
+    apiClient.post(`/works/${workId}/tracking/commit`, data),
+  upsertForeshadow: (workId: string, data: ForeshadowUpsertPayload) =>
+    apiClient.post(`/works/${workId}/tracking/foreshadows`, data),
+};
+```
 
 // src/api/chapters.ts
 export const chaptersApi = {

@@ -15,6 +15,15 @@ import {
 
 import { outlineApi, type OutlineTreeNode, type OutlineNodeCreate } from '@/api';
 
+/** 把多行文本拆成约束列表。 */
+function splitLines(value: unknown): string[] {
+  if (typeof value !== 'string') return [];
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 export default function OutlinePage() {
   const { id: workId } = useParams<{ id: string }>();
   const { message } = App.useApp();
@@ -84,6 +93,8 @@ export default function OutlinePage() {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      const mustHappen = splitLines(values.must_happen);
+      const mustNot = splitLines(values.must_not_happen);
       await createMutation.mutateAsync({
         work_id: workId,
         type: values.type,
@@ -93,6 +104,13 @@ export default function OutlinePage() {
         beats: values.beats ?? [],
         target_word_count: values.target_word_count ?? 3000,
         order: values.order ?? 0,
+        write_constraints: {
+          must_happen: mustHappen,
+          must_not_happen: mustNot,
+          time_anchor: '',
+          stop_point: '',
+          end_hook_debt: values.end_hook_debt ?? '',
+        },
       });
     } catch {
       /* 表单校验失败 */
@@ -177,6 +195,19 @@ export default function OutlinePage() {
           </Form.Item>
           <Form.Item label="排序" name="order">
             <InputNumber min={0} max={10000} className="w-full" />
+          </Form.Item>
+          <Form.Item
+            label="必须发生"
+            name="must_happen"
+            tooltip="每行一条。写正文时作为约束锁，优先于写作技法。"
+          >
+            <Input.TextArea rows={2} placeholder="每行一条本章必须发生的变化" />
+          </Form.Item>
+          <Form.Item label="禁止发生" name="must_not_happen">
+            <Input.TextArea rows={2} placeholder="每行一条本章禁止发生的事" />
+          </Form.Item>
+          <Form.Item label="章尾新债" name="end_hook_debt">
+            <Input placeholder="本章结束时留给下一章的期待" />
           </Form.Item>
           <Form.Item label="父节点 ID" name="parent_id" tooltip="留空表示顶级节点">
             <Input placeholder="可选，填写已存在节点的 UUID" />

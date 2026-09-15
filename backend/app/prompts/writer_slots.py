@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from app.models.world import WorldBible
 
     from app.schemas.rag import RagHit
+    from app.schemas.tracking import WriterContextCard
     from app.services.chapter_role_resolver import ReferenceHints
 
 _EMPTY = "（未指定）"
@@ -280,6 +281,67 @@ def _format_rag_hits_slot(hits: list["RagHit"], max_chars: int = 300) -> str:
     return "\n".join(lines)
 
 
+def _format_constraints_slot(card: "WriterContextCard | None") -> str:
+    """把约束锁渲染为 Writer 必读段。"""
+    if card is None:
+        return ""
+    c = card.constraints
+    lines = [
+        "以下为项目事实，优先于任何写作技法；不得把作者真相写成角色已知。",
+        f"字数带：{c.word_count_min or '未设'} – {c.word_count_max or '未设'}",
+        "必须发生：" + ("；".join(c.must_happen) if c.must_happen else _NONE_DESC),
+        "禁止发生：" + ("；".join(c.must_not_happen) if c.must_not_happen else _NONE_DESC),
+        f"时间锚点：{c.time_anchor or _NONE_DESC}",
+        f"停笔点：{c.stop_point or _NONE_DESC}",
+        f"章尾新债：{c.end_hook_debt or _NONE_DESC}",
+    ]
+    return "\n".join(lines)
+
+
+def _format_runtime_states_slot(card: "WriterContextCard | None") -> str:
+    """角色当前状态（位置/知情/线索），不是人设。"""
+    if card is None or not card.character_states:
+        return ""
+    lines = []
+    for s in card.character_states[:8]:
+        known = "、".join(s.known_facts[:6]) or _NONE_DESC
+        unknown = "、".join(s.unknown_facts[:6]) or _NONE_DESC
+        threads = "、".join(s.open_threads[:6]) or _NONE_DESC
+        lines.append(
+            f"  - {s.name or s.character_id}：位置={s.location or _NONE_DESC}；"
+            f"目标={s.goal or _NONE_DESC}；已知={known}；未知={unknown}；未了线索={threads}"
+        )
+    return "\n".join(lines)
+
+
+def _format_foreshadow_slot(card: "WriterContextCard | None") -> str:
+    """待收伏笔，禁止提前兑现除非约束锁要求。"""
+    if card is None or not card.open_foreshadows:
+        return ""
+    lines = []
+    for fs in card.open_foreshadows[:12]:
+        names = "、".join(fs.character_names) if fs.character_names else ""
+        suffix = f"（相关：{names}）" if names else ""
+        lines.append(f"  - [{fs.status}] {fs.title}{suffix}：{fs.description or _NONE_DESC}")
+    return "\n".join(lines)
+
+
+def _format_knowledge_slot(card: "WriterContextCard | None") -> str:
+    """作者真相 vs 读者已知。"""
+    if card is None:
+        return ""
+    author = card.author_timeline
+    reader = card.reader_timeline
+    if not author and not reader:
+        return ""
+    author_txt = "；".join(e.text for e in author) or _NONE_DESC
+    reader_txt = "；".join(e.text for e in reader) or _NONE_DESC
+    return (
+        f"作者真相（角色未必知道）：{author_txt}\n"
+        f"读者已知：{reader_txt}"
+    )
+
+
 def _format_task_slot(
     chapter: "Chapter",
     target_word_count: Optional[int],
@@ -316,21 +378,22 @@ def assemble_writer_slots(
     world_refs: Optional[list[str]],
     reference_hints: Optional["ReferenceHints"] = None,
     rag_hits: Optional[list["RagHit"]] = None,
+    continuity: Optional["WriterContextCard"] = None,
 ) -> PromptAssembly:
-    """装配完整的 WriterAgent user prompt(11+1 个有序 slot)。
+    """装配完整的 WriterAgent user prompt。
 
     顺序(不可改):
     1. 作品总览
     2. 文风裁决
-    3. 本章大纲
-    4. Reference Gate 必读(advice)
-    5. 同卷其他章节
-    6. 世界书全文(节选,受 hints.must_read_world_full 控制)
-    7. 世界条目(精准,resolve_world_refs)
-    8. 出场角色
-    8.5 [RAG 检索补充] — 在出场角色之后、上一章摘要之前(rag_hits 非空时插入)
-    9. 上一章摘要
-    10. 本章已有正文(续写模式)
+    3. 本章约束锁（项目事实）
+    4. 本章大纲
+    5. Reference Gate 必读(advice)
+    6. 同卷其他章节
+    7. 世界书全文 / 世界条目
+    8. 出场角色（人设）+ 角色当前状态（知情/位置）
+    8.5 RAG 检索补充（语义相关旧文，不得覆盖账本事实）
+    9. 待收伏笔 + 知情范围
+    10. 上一章摘要 / 已有正文
     11. 本章任务
     """
     slots: list[PromptSlot] = []
@@ -351,6 +414,16 @@ def assemble_writer_slots(
         body=style_body,
         max_chars=800,
     ))
+
+    # 2.5 本章约束锁（项目事实优先）
+    lock_body = _format_constraints_slot(continuity)
+    if lock_body:
+        slots.append(PromptSlot(
+            title="【本章约束锁】",
+            body=lock_body,
+            max_chars=1500,
+            required=True,
+        ))
 
     # 3. 本章大纲
     if outline:
@@ -422,6 +495,15 @@ def assemble_writer_slots(
             max_chars=1500,
         ))
 
+    runtime_body = _format_runtime_states_slot(continuity)
+    if runtime_body:
+        slots.append(PromptSlot(
+            title="【角色当前状态】",
+            body=runtime_body,
+            max_chars=1500,
+            required=True,
+        ))
+
     # 8.5 RAG 检索补充(rag_hits 非空时插入,空 list/None 时跳过)
     if rag_hits:
         rag_body = _format_rag_hits_slot(rag_hits)
@@ -430,7 +512,23 @@ def assemble_writer_slots(
                 title="【RAG 向量检索补充】",
                 body=rag_body,
                 max_chars=1500,
-            ))
+                    ))
+
+    fs_body = _format_foreshadow_slot(continuity)
+    if fs_body:
+        slots.append(PromptSlot(
+            title="【待收伏笔】",
+            body=fs_body,
+            max_chars=1200,
+        ))
+    know_body = _format_knowledge_slot(continuity)
+    if know_body:
+        slots.append(PromptSlot(
+            title="【知情范围】",
+            body=know_body,
+            max_chars=1200,
+            required=True,
+        ))
 
     # 9. 上一章摘要
     if previous_summary:

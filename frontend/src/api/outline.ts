@@ -1,4 +1,5 @@
 import { http } from './client';
+import type { WriteConstraints } from './tracking';
 
 export type OutlineNodeType = 'volume' | 'chapter' | 'beat';
 
@@ -13,6 +14,7 @@ export interface OutlineNode {
   world_refs: string[];
   target_word_count: number;
   order: number;
+  write_constraints?: WriteConstraints;
   work_id: string;
   created_at: string;
   updated_at: string;
@@ -38,6 +40,7 @@ export interface OutlineNodeCreate {
   world_refs?: string[];
   target_word_count?: number;
   order?: number;
+  write_constraints?: WriteConstraints;
 }
 
 export interface OutlineNodeUpdate {
@@ -50,6 +53,7 @@ export interface OutlineNodeUpdate {
   world_refs?: string[];
   target_word_count?: number;
   order?: number;
+  write_constraints?: WriteConstraints;
 }
 
 // ==================== AI 推荐大纲（强 schema）====================

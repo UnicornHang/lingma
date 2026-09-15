@@ -3,9 +3,10 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.outline import OutlineNodeType
+from app.schemas.tracking import WriteConstraints
 
 
 class OutlineNodeBase(BaseModel):
@@ -20,6 +21,16 @@ class OutlineNodeBase(BaseModel):
     world_refs: list[str] = Field(default_factory=list, description="引用世界观条目")
     target_word_count: int = Field(default=3000, ge=100, le=20_000)
     order: int = Field(default=0, ge=0, le=10_000)
+    write_constraints: WriteConstraints = Field(
+        default_factory=WriteConstraints,
+        description="本章约束锁（项目事实，写正文前必读）",
+    )
+
+    @field_validator("write_constraints", mode="before")
+    @classmethod
+    def _coerce_write_constraints(cls, value):
+        """旧行或 SQLite 补列后可能为 None。"""
+        return value or {}
 
 
 class OutlineNodeCreate(OutlineNodeBase):
@@ -40,6 +51,7 @@ class OutlineNodeUpdate(BaseModel):
     world_refs: list[str] | None = None
     target_word_count: int | None = Field(None, ge=100, le=20_000)
     order: int | None = Field(None, ge=0, le=10_000)
+    write_constraints: WriteConstraints | None = None
 
 
 class OutlineNodeRead(OutlineNodeBase):
@@ -75,6 +87,7 @@ class OutlineTreeNode(BaseModel):
     world_refs: list[str]
     target_word_count: int
     order: int
+    write_constraints: WriteConstraints = Field(default_factory=WriteConstraints)
     children: list["OutlineTreeNode"] = Field(default_factory=list)
 
 

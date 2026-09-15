@@ -55,6 +55,7 @@ class Work(Base, UUIDMixin, TimestampMixin):
         from app.models.character import Character
         from app.models.outline import OutlineNode
         from app.models.world import WorldBible
+        from app.models.tracking import TrackingState
 
     chapters: Mapped[list["Chapter"]] = relationship(
         back_populates="work",
@@ -72,6 +73,12 @@ class Work(Base, UUIDMixin, TimestampMixin):
         lazy="selectin",
     )
     world_bible: Mapped["WorldBible"] = relationship(
+        back_populates="work",
+        cascade="all, delete-orphan",
+        uselist=False,
+        lazy="selectin",
+    )
+    tracking_state: Mapped["TrackingState"] = relationship(
         back_populates="work",
         cascade="all, delete-orphan",
         uselist=False,

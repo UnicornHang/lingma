@@ -31,6 +31,7 @@ import {
 } from '@/api/chapters';
 import { CriticTrendChart } from '@/components/Charts/CriticTrendChart';
 import { WorldConsistencyPanel } from '@/components/World/WorldConsistencyPanel';
+import { TrackingContinuityPanel } from '@/components/Tracking/TrackingContinuityPanel';
 import { outlineApi, type OutlineTreeNode } from '@/api/outline';
 import { useGenerationStream } from '@/hooks/useGenerationStream';
 import { RichEditor, type RichEditorHandle } from '@/components/RichEditor';
@@ -1151,7 +1152,7 @@ export default function ChapterEditorPage() {
           </div>
 
           {/* World bible check */}
-          {(activeTab === 3) && (
+          {activeTab === 3 && (
             <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant/40">
               {chapter?.work_id ? (
                 <WorldConsistencyPanel
@@ -1166,19 +1167,27 @@ export default function ChapterEditorPage() {
             </div>
           )}
 
-          {/* Foreshadowing */}
-          <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant/40 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="chip-primary">伏笔</span>
-              <span className="font-code-sm text-outline">2 项建议</span>
+          {activeTab === 2 && chapter?.work_id && (
+            <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant/40">
+              <TrackingContinuityPanel
+                workId={chapter.work_id}
+                outlineNodeId={outlineNodeId}
+                chapterId={chapter.id}
+                mode="characters"
+              />
             </div>
-            <div className="p-2 rounded bg-surface-container-lowest">
-              <p className="text-body-sm text-on-surface">
-                "白驴" → 暂无关联，可在后续卷中关联「骊珠洞天·灵兽」
-              </p>
-              <Button type="link" size="small" style={{ padding: 0, height: 'auto', marginTop: 4 }}>+ 加入伏笔簿</Button>
+          )}
+
+          {activeTab === 4 && chapter?.work_id && (
+            <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant/40">
+              <TrackingContinuityPanel
+                workId={chapter.work_id}
+                outlineNodeId={outlineNodeId}
+                chapterId={chapter.id}
+                mode="foreshadows"
+              />
             </div>
-          </div>
+          )}
         </div>
       </aside>
 

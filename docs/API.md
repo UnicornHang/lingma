@@ -17,6 +17,7 @@
 3. [错误响应](#错误响应)
 4. [REST 端点](#rest-端点)
    - [作品 Works](#作品-works)
+   - [连续性追踪 Tracking](#连续性追踪-tracking)
    - [章节 Chapters](#章节-chapters)
    - [设置 Settings](#设置-settings)
 5. [WebSocket 端点](#websocket-端点)
@@ -229,6 +230,27 @@
   ]
 }
 ```
+
+---
+
+### 连续性追踪 Tracking
+
+对话不负责记忆。权威状态在 `tracking_states.payload`，下列接口只读写账本或返回派生视图。
+
+#### `GET /api/v1/works/{work_id}/tracking`
+返回伏笔、角色运行时状态、作者真相/读者已知时间线。Query `outline_node_id` 可选，传入则附带该细纲的写前上下文卡。
+
+#### `GET /api/v1/works/{work_id}/tracking/context`
+Writer 写前短卡：约束锁、出场角色状态、待收伏笔、知情范围。
+
+#### `POST /api/v1/works/{work_id}/tracking/commit`
+提交一章增量（埋笔、兑现、角色状态、时间线、备注）。备注上限 3072 字。
+
+#### `POST /api/v1/works/{work_id}/tracking/foreshadows`
+登记或更新一条伏笔（`open` / `paid` / `broken`）。
+
+#### `PUT /api/v1/works/{work_id}/tracking/constraints/{outline_node_id}`
+缓存细纲约束锁。细纲字段 `write_constraints` 仍是产品主入口。
 
 ---
 

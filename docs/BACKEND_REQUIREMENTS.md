@@ -1,8 +1,8 @@
 # 织梦 (ZhiMeng) — 后端开发需求文档
 
 > 项目代号：**ZhiMeng Novel Studio**
-> 文档版本：v1.0
-> 文档日期：2026-09-10
+> 文档版本：v1.1
+> 文档日期：2026-09-15
 > 适用模块：**后端服务（Backend）**
 > 技术栈：Python 3.11+ / FastAPI / SQLAlchemy 2.0 / LangGraph / Chroma / LiteLLM
 > 配套文档：[PRD.md](PRD.md) · [FRONTEND_REQUIREMENTS.md](FRONTEND_REQUIREMENTS.md)
@@ -39,7 +39,7 @@ ZhiMeng 后端是整个系统的"大脑"，承担以下职责：
 - **数据持久化**：作品、大纲、章节、人物、世界观等结构化数据存储
 - **业务编排**：6 个 AI Agent 的调度、上下文组装、状态管理
 - **LLM 路由**：对接多模型服务（OpenAI、Anthropic、DeepSeek、Qwen、Ollama 等）
-- **记忆系统**：基于向量库（RAG）的长期一致性保证
+- **记忆系统**：连续性账本（权威短状态）+ 向量库 RAG（语义召回）
 - **实时通信**：WebSocket 流式输出章节生成内容
 - **文件服务**：导入导出 DOCX/EPUB/TXT
 
@@ -415,6 +415,8 @@ backend/
      │
      *──── OutlineNode (独立挂在 Work 下)
      │
+     *──── TrackingState (1:1 权威 JSON)
+     │
      *
  SettingRule
 
@@ -510,6 +512,23 @@ class Work(Base, UUIDMixin, TimestampMixin):
         uselist=False, lazy="selectin"
     )
 ```
+
+#### 5.2.2b TrackingState 模型
+
+每部作品一条权威 JSON。Writer 写前只读派生「上下文卡」；写后走 `tracking_service.commit_tracking`，禁止把摘要 Markdown 反向解析回权威状态。
+
+```python
+# app/models/tracking.py
+class TrackingState(Base, UUIDMixin, TimestampMixin):
+    __tablename__ = "tracking_states"
+    work_id: Mapped[UUID] = mapped_column(ForeignKey("works.id"), unique=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+```
+
+payload 键：`foreshadows` / `characters`（运行时状态） / `author_timeline` / `reader_timeline` / `chapter_records` / `chapter_constraints`。
+
+Writer 装配顺序：约束锁 → 细纲 → 人设卡 → 角色当前状态 → 伏笔与知情范围 → RAG 补充（不得覆盖账本）。
 
 #### 5.2.3 Chapter 模型
 
@@ -2390,7 +2409,7 @@ async def health():
 |----|----------|
 | W5-W6 | World/Character/Plot/Editor/Critic Agent |
 | W7-W8 | Chroma 向量库 + RAG Service + Memory Service |
-| W9-W10 | 一致性校验 + 摘要滚动 + 增量索引 |
+| W9-W10 | 一致性校验 + 连续性账本（TrackingState）+ 摘要滚动 |
 | W11-W12 | 高级设置 + Prompt 编辑 + 模板系统 |
 
 ### 16.3 v1.0 GA（+4 周）

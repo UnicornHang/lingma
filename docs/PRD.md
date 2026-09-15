@@ -1,8 +1,8 @@
 # 织梦 (ZhiMeng) 小说 AI Agent 平台 — 产品需求文档 (PRD)
 
 > 项目代号：**ZhiMeng Novel Studio**
-> 文档版本：v1.0
-> 文档日期：2026-09-10
+> 文档版本：v1.1
+> 文档日期：2026-09-15
 > 文档状态：待评审
 
 ---
@@ -133,7 +133,7 @@
 | 维度 | 通用 ChatGPT | 在线 AI 写作 SaaS | **ZhiMeng** |
 |------|--------------|------------------|------------|
 | 数据隐私 | ❌ 上传云端 | ❌ 上传云端 | ✅ 完全本地 |
-| 长期一致性 | ⚠️ 弱 | ⚠️ 中 | ✅ 强（向量库） |
+| 长期一致性 | ⚠️ 弱 | ⚠️ 中 | ✅ 强（连续性账本 + RAG） |
 | 风格定制 | ⚠️ 需每次输入 | ⚠️ 模板有限 | ✅ 风格向量 |
 | 协作能力 | ❌ 单模型 | ⚠️ 弱 | ✅ 6 Agent 协作 |
 | 部署难度 | — | — | ✅ 一行命令 |
@@ -168,7 +168,8 @@
 │  └─ 4.10 评审 Agent                                 │
 │                                                     │
 │  L3 - 记忆与知识层                                  │
-│  ├─ 4.11 长期记忆（RAG）                            │
+│  ├─ 4.11 长期记忆（RAG，语义召回）                    │
+│  ├─ 4.11.5 连续性账本（权威状态，写前约束卡）          │
 │  ├─ 4.12 人物卡管理                                 │
 │  └─ 4.13 设定圣经管理                               │
 │                                                     │
@@ -478,19 +479,41 @@ USER_PROMPT = """
 
 #### 4.8.3 上下文组装
 
+对话不负责记忆。写一章只加载「不知道就会写错」的短上下文：
+
 ```
-[设定圣经摘要]
+[本章约束锁：字数带 / 必发生 / 禁止发生 / 章尾新债]
     ↓
-[相关人物卡（前5个相关人物）]
+[出场角色人设卡] + [角色当前状态：位置 / 已知 / 未知]
     ↓
-[前 3 章摘要]
+[待收伏笔] + [作者真相 vs 读者已知]
     ↓
-[当前章节大纲]
+[本章细纲] + [上一章摘要]
     ↓
-[System Prompt + User Prompt]
+[RAG 向量补充（语义相关旧文，不得覆盖账本事实）]
     ↓
 LLM 流式输出
+写完 → POST tracking/commit 提交增量（权威 JSON）
 ```
+
+**停靠点**：用户只说「开书 / 写大纲」时，流水线停在细纲，不自动写正文；无对应细纲时 Writer 应提示补纲。
+
+### 4.11.4 RAG 与连续性账本的分工
+
+| 机制 | 适合 | 不适合 |
+|------|------|--------|
+| **连续性账本**（`tracking_states.payload`） | 必须对、必须短的事实：知情范围、伏笔状态、约束锁 | 大段文风模仿、模糊相似情节 |
+| **RAG** | 语义上相关的旧段落、设定条文 | 当唯一真相源（易把计划当成已发生） |
+
+人设卡（`characters`）是稳定人格；运行时状态在账本里。二者必须分开读。
+
+#### 4.11.5 连续性追踪（产品要求）
+
+- 每部作品一条权威 JSON；伏笔列表、角色快照、时间线均为派生视图
+- 作者真相、读者已知、角色已知三套分开；禁止让不知情角色提前开口
+- 单章增量有上限；写前上下文卡控制在约 12KB 量级
+- 反推/导入的设定一律标「待确认」，不覆盖已有正文
+- **不做**内置扫榜爬虫或复用登录态抓取第三方站点
 
 #### 4.8.4 流式输出
 
@@ -961,6 +984,8 @@ zhimeng/
      │                                          │
      ├──* Character                  OutlineNode
      │
+     ├──* TrackingState              # 1:1 连续性权威 JSON
+     │
      ├──* SettingRule
      │
      └──* StyleProfile
@@ -1067,6 +1092,15 @@ class OutlineNode(Base):
     world_refs: JSON                # [world_setting_id]
     target_word_count: int
     order: int
+    write_constraints: JSON         # 约束锁：必发生/禁止/字数带/章尾新债
+
+# tracking_states 表（每作品一条权威账本）
+class TrackingState(Base):
+    __tablename__ = "tracking_states"
+    id: UUID (PK)
+    work_id: UUID (FK, unique)
+    payload: JSON                   # 伏笔 / 角色状态 / 作者·读者时间线 / 章增量 / 约束缓存
+    revision: int
 
 # generation_tasks 表
 class GenerationTask(Base):
@@ -1197,6 +1231,16 @@ PUT    /works/{id}/world              # 整体更新
 PATCH  /works/{id}/world/{section}    # 部分更新（如 factions）
 POST   /works/{id}/world/ai-build     # AI 构建世界观
 POST   /works/{id}/world/check-consistency   # 一致性检查
+
+#### 连续性追踪
+
+```
+GET    /works/{id}/tracking                  # 账本派生视图
+GET    /works/{id}/tracking/context          # Writer 写前短上下文卡
+POST   /works/{id}/tracking/commit           # 提交一章增量
+POST   /works/{id}/tracking/foreshadows      # 登记/更新伏笔
+PUT    /works/{id}/tracking/constraints/{outline_node_id}
+```
 ```
 
 #### 角色相关

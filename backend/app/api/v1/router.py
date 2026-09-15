@@ -11,6 +11,7 @@ from app.api.v1 import (
     rag,
     settings,
     tasks,
+    tracking,
     works,
     world,
 )
@@ -23,6 +24,7 @@ api_router.include_router(chapters.router, prefix="/chapters", tags=["章节"])
 api_router.include_router(characters.router, tags=["角色"])
 api_router.include_router(outline.router, tags=["大纲"])
 api_router.include_router(world.router, tags=["世界书"])
+api_router.include_router(tracking.router, tags=["连续性追踪"])
 api_router.include_router(critic.router, tags=["评审"])
 api_router.include_router(rag.router, tags=["RAG"])
 api_router.include_router(tasks.router, tags=["任务"])

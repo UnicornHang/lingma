@@ -1,6 +1,6 @@
 # ZhiMeng 架构设计
 
-> 版本 0.1.0 · 2026-09-10
+> 版本 0.2.0 · 2026-09-15
 
 本文档描述织梦小说工坊（ZhiMeng Novel Studio）的整体架构、模块边界、数据流与关键技术决策。开发人员应先读此文档，再读具体模块的需求文档。
 
@@ -45,7 +45,7 @@ ZhiMeng 采用经典的 **前后端分离 + 本地一体化部署** 结构：
 │  ┌──────▼───────────────▼────────────────────▼───────────┐   │
 │  │            Service Layer (业务服务)                     │   │
 │  │  WorkService / ChapterService / SettingService        │   │
-│  │  CryptoService / LLMService                            │   │
+│  │  TrackingService / CryptoService / LLMService         │   │
 │  └──────┬──────────────────┬──────────────────┬──────────┘   │
 │         │                  │                  │              │
 │  ┌──────▼─────┐    ┌───────▼────────┐   ┌─────▼─────────┐   │
@@ -81,6 +81,7 @@ app/
 ├── api/                   # HTTP/WS 路由
 │   ├── v1/
 │   │   ├── works.py       # 作品 CRUD
+│   │   ├── tracking.py    # 连续性账本
 │   │   ├── chapters.py    # 章节 CRUD
 │   │   └── settings.py    # 设置 + API 配置
 │   └── ws/
@@ -97,6 +98,7 @@ app/
 │   └── orchestrator.py    # 流水线编排（当前线性，后续 LangGraph）
 ├── services/              # 业务服务层
 │   ├── work_service.py
+│   ├── tracking_service.py  # 权威 JSON + 写前上下文卡
 │   ├── chapter_service.py
 │   ├── setting_service.py
 │   ├── crypto_service.py  # API Key 加密
@@ -183,6 +185,14 @@ src/
   │ progress         │
   │ result           │
   └──────────────────┘
+
+  ┌──────────────────┐
+  │ TrackingState    │ (每作品一份权威 JSON)
+  │──────────────────│
+  │ work_id unique   │
+  │ payload          │
+  │ revision         │
+  └──────────────────┘
 ```
 
 ### 3.2 关键设计
@@ -190,6 +200,7 @@ src/
 - **Work** 是顶层聚合根，删除作品时级联清理所有子表
 - **ChapterVersion** 保留每次保存/生成的快照，支持 diff 与回滚
 - **GenerationTask** 跟踪所有 Agent 异步调用，便于前端轮询或 WS 订阅
+- **TrackingState** 每作品一条权威 JSON；派生视图（上下文卡、伏笔、时间线）只读生成
 - **WorldBible** 一对一关联作品（`uselist=False`），包含结构化字段 + 自然语言描述
 - 所有时间戳（`created_at` / `updated_at`）由 `TimestampMixin` 自动管理
 - 所有主键使用 UUID（`UUIDMixin`），避免 ID 可枚举
@@ -205,7 +216,7 @@ src/
 | **Plot** | 规划 | 总纲/卷纲/节拍设计 | logline / 一句话简介 | 分卷结构 + 节拍列表 |
 | **World** | 规划 | 世界观圣经 | 题材 + 灵感关键词 | 地理/势力/修炼体系 |
 | **Character** | 规划 | 角色档案 | 大纲 + 主题 | 角色卡（多张） |
-| **Writer** | 生成 | 章节正文 | 大纲节点 + 上下文 + 前章 | TipTap JSON + plain text |
+| **Writer** | 生成 | 章节正文 | 约束锁 + 人设/状态卡 + 细纲 + RAG 补充 | TipTap JSON + plain text |
 | **Editor** | 编辑 | 风格润色 | 章节草稿 | 润色版本 + 修改建议 |
 | **Critic** | 评估 | 质量评估 | 章节正文 + 上下文 | 评分 + 问题清单 |
 
@@ -230,7 +241,7 @@ plot ──► world ──► character ──► writer ──► editor ─�
 | MVP | 串行调用，固定流水线 | ✅ 已实现 |
 | V1 | LangGraph 状态机，支持分支 / 回滚 | 📋 待开发 |
 | V2 | 多 Writer 并行 + Critic 仲裁 | 📋 待开发 |
-| V3 | 自适应编排（基于任务类型选择 Agent 子集） | 📋 待开发 |
+| V3 | 自适应编排（按任务选 Agent；开书默认停细纲） | 📋 进行中（约束锁 + 账本） |
 
 ---
 
@@ -437,7 +448,8 @@ v0.5 (1-2 月)
 
 v1.0 (3-4 月)
  ├─ ⏳ 全 6 Agent 端到端流水线
- ├─ ⏳ 向量记忆系统（角色 / 世界 / 伏笔）
+ ├─ ✅ 连续性账本（TrackingState：伏笔 / 知情范围 / 写前约束卡）
+ ├─ ⏳ 向量记忆系统（角色 / 世界语义召回，不替代账本）
  ├─ ⏳ LangGraph 编排器
  └─ ⏳ 多用户、多设备（同步协议）
 
@@ -457,6 +469,7 @@ v2.0 (6+ 月)
 | **Agent** | 单一职责的 AI 单元（如 PlotAgent），实现 `BaseAgent` 接口 |
 | **Orchestrator** | 协调多个 Agent 执行的引擎 |
 | **RAG** | Retrieval-Augmented Generation，向量检索增强生成 |
+| **连续性账本** | 每作品一份权威 JSON，记知情范围与伏笔；对话只负责创作 |
 | **TipTap** | 基于 ProseMirror 的富文本编辑器框架 |
 | **Fernet** | cryptography 库的加密方案（AES + HMAC + 时间戳） |
 | **Pipeline** | Agent 链式调用序列 |
