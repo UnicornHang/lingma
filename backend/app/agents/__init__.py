@@ -4,6 +4,7 @@ from app.agents.character_agent import CharacterAgent
 from app.agents.critic_agent import CriticAgent
 from app.agents.editor_agent import EditorAgent
 from app.agents.plot_agent import PlotAgent
+from app.agents.style_mimic_agent import StyleMimicAgent
 from app.agents.world_agent import WorldAgent
 from app.agents.writer_agent import WriterAgent
 
@@ -15,6 +16,7 @@ __all__ = [
     "WriterAgent",
     "EditorAgent",
     "CriticAgent",
+    "StyleMimicAgent",
 ]
 
 
@@ -26,6 +28,7 @@ AGENT_REGISTRY: dict[str, type[BaseAgent]] = {
     "writer": WriterAgent,
     "editor": EditorAgent,
     "critic": CriticAgent,
+    "style_mimic": StyleMimicAgent,
 }
 
 

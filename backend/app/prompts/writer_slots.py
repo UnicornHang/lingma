@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from app.models.world import WorldBible
 
     from app.schemas.rag import RagHit
+    from app.schemas.style_mimic import StyleMemoryCard
     from app.schemas.tracking import WriterContextCard
     from app.services.chapter_role_resolver import ReferenceHints
 
@@ -298,6 +299,38 @@ def _format_constraints_slot(card: "WriterContextCard | None") -> str:
     return "\n".join(lines)
 
 
+def _format_style_memory_slot(card: "StyleMemoryCard | None") -> str:
+    """仿文风格记忆：学技法，不抄专有名词与桥段。"""
+    if card is None:
+        return ""
+    p = card.portrait
+    lines = [
+        "以下为目标文风记忆（参考学习）。学句式与节奏，禁止照抄专有名词、桥段与原文长句。",
+        f"来源标签：{card.source_label or '（未命名）'}",
+    ]
+    if card.writing_directives.strip():
+        lines.append(f"写作指令：{card.writing_directives.strip()}")
+    portrait_bits = [
+        f"人称={p.narrative_pov}" if p.narrative_pov else "",
+        f"句长={p.avg_sentence_len}" if p.avg_sentence_len else "",
+        f"对话密度={p.dialogue_density}" if p.dialogue_density else "",
+        f"情绪={p.emotional_style}" if p.emotional_style else "",
+        f"用词={p.lexicon_notes}" if p.lexicon_notes else "",
+    ]
+    portrait_line = "；".join(b for b in portrait_bits if b)
+    if portrait_line:
+        lines.append(f"画像：{portrait_line}")
+    if p.rhetoric_habits:
+        lines.append("修辞习惯：" + "、".join(p.rhetoric_habits[:6]))
+    if p.pacing_tags:
+        lines.append("节奏标签：" + "、".join(p.pacing_tags[:6]))
+    if card.snippets:
+        lines.append("技法片段（仅参考写法）：")
+        for sn in card.snippets[:5]:
+            lines.append(f"  - [{sn.tag}] {sn.text}")
+    return "\n".join(lines)
+
+
 def _format_runtime_states_slot(card: "WriterContextCard | None") -> str:
     """角色当前状态（位置/知情/线索），不是人设。"""
     if card is None or not card.character_states:
@@ -379,19 +412,21 @@ def assemble_writer_slots(
     reference_hints: Optional["ReferenceHints"] = None,
     rag_hits: Optional[list["RagHit"]] = None,
     continuity: Optional["WriterContextCard"] = None,
+    style_memory: Optional["StyleMemoryCard"] = None,
 ) -> PromptAssembly:
     """装配完整的 WriterAgent user prompt。
 
     顺序(不可改):
     1. 作品总览
     2. 文风裁决
-    3. 本章约束锁（项目事实）
-    4. 本章大纲
-    5. Reference Gate 必读(advice)
-    6. 同卷其他章节
-    7. 世界书全文 / 世界条目
-    8. 出场角色（人设）+ 角色当前状态（知情/位置）
-    8.5 RAG 检索补充（语义相关旧文，不得覆盖账本事实）
+    2.25 仿文风格记忆（可选）
+    2.5 本章约束锁（项目事实）
+    3. 本章大纲
+    4. Reference Gate 必读(advice)
+    5. 同卷其他章节
+    6. 世界书全文 / 世界条目
+    7. 出场角色（人设）+ 角色当前状态（知情/位置）
+    8. RAG 检索补充（语义相关旧文，不得覆盖账本事实）
     9. 待收伏笔 + 知情范围
     10. 上一章摘要 / 已有正文
     11. 本章任务
@@ -414,6 +449,15 @@ def assemble_writer_slots(
         body=style_body,
         max_chars=800,
     ))
+
+    # 2.25 仿文风格记忆（启用时注入）
+    memory_body = _format_style_memory_slot(style_memory)
+    if memory_body:
+        slots.append(PromptSlot(
+            title="【仿文风格记忆】",
+            body=memory_body,
+            max_chars=1600,
+        ))
 
     # 2.5 本章约束锁（项目事实优先）
     lock_body = _format_constraints_slot(continuity)

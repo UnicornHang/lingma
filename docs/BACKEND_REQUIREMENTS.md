@@ -422,7 +422,7 @@ backend/
 
 Work 1───* GenerationTask
 Work 1───* APIConfig (全局共享)
-Work 1───* StyleProfile
+Work 1───1 StyleProfile
 ```
 
 ### 5.2 SQLAlchemy 模型定义
@@ -528,7 +528,24 @@ class TrackingState(Base, UUIDMixin, TimestampMixin):
 
 payload 键：`foreshadows` / `characters`（运行时状态） / `author_timeline` / `reader_timeline` / `chapter_records` / `chapter_constraints`。
 
-Writer 装配顺序：约束锁 → 细纲 → 人设卡 → 角色当前状态 → 伏笔与知情范围 → RAG 补充（不得覆盖账本）。
+Writer 装配顺序：约束锁 → 细纲 → 人设卡 → 角色当前状态 → 伏笔与知情范围 → RAG 补充（不得覆盖账本）。仿文启用时在文风裁决后追加【仿文风格记忆】。
+
+#### 5.2.2c StyleProfile 模型（仿文 MVP）
+
+每部作品最多一条。只存画像与短片段，不存样本原文，不进账本。
+
+```python
+# app/models/style_profile.py
+class StyleProfile(Base, UUIDMixin, TimestampMixin):
+    __tablename__ = "style_profiles"
+    work_id: Mapped[UUID]  # unique FK → works
+    source_label: Mapped[str]
+    source_char_count: Mapped[int]
+    portrait: Mapped[dict]          # 结构化风格画像
+    writing_directives: Mapped[str]
+    snippets: Mapped[list]          # [{tag, text}]
+    enabled: Mapped[bool]
+```
 
 #### 5.2.3 Chapter 模型
 

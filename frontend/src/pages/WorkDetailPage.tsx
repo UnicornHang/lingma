@@ -16,6 +16,7 @@ import {
 
 import { worksApi, chaptersApi, outlineApi, checkHealth, type Work, type Chapter } from '@/api';
 import { ExportWorkModal } from '@/components/Export/ExportWorkModal';
+import { StyleMimicPanel } from '@/components/StyleMimic/StyleMimicPanel';
 import { findFirstChapterNode } from '@/utils/outline';
 
 interface ChapterSummary {
@@ -235,6 +236,9 @@ export default function WorkDetailPage() {
           <Stat label="风格关键词" value={String(work.style_keywords.length)} sub={work.style_keywords.slice(0, 3).join(' · ') || '（未设置）'} />
           <Stat label="已完成度" value={`${progressPct}%`} isProgress progress={progressPct} />
         </section>
+
+        {/* 仿文风格记忆 MVP */}
+        <StyleMimicPanel workId={id} />
 
         {/* Recent chapters */}
         <section className="surface-card p-6 flex flex-col gap-4">

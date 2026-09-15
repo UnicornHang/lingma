@@ -42,6 +42,7 @@ async def init_db() -> None:
         outline,
         prompt_template,  # [P4]
         setting,
+        style_profile,  # 仿文风格画像
         task,
         tracking,  # 连续性账本
         world,

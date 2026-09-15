@@ -328,7 +328,7 @@ export const router = createBrowserRouter([
 | `/` | 作品列表 | 主入口 |
 | `/onboarding` | 新手引导 | 首次启动 |
 | `/settings` | 设置 | 全局设置 |
-| `/works/:workId` | 作品详情/仪表盘 | 默认页 |
+| `/works/:workId` | 作品详情/仪表盘 | 含仿文风格记忆面板（粘贴样本 → 画像） |
 | `/works/:workId/outline` | 大纲编辑 | 树状结构 |
 | `/works/:workId/world` | 世界圣经 | 多 Tab |
 | `/works/:workId/characters` | 角色管理 | 列表 + 详情 |

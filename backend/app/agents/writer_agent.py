@@ -51,6 +51,7 @@ from app.services.llm_service import (
     get_llm_service,
 )
 from app.services.rag_service import get_rag_service
+from app.services.style_mimic_service import load_writer_style_memory
 from app.services.tracking_service import build_writer_context_card
 from app.services.world_service import get_or_create_world_bible
 
@@ -119,6 +120,7 @@ class WriterAgent(BaseAgent):
         # ===== RAG 检索（可优雅降级）=====
         rag_hits = await _search_rag_hits(db, chapter, outline)
         continuity = await _load_continuity(db, chapter.work_id, outline, characters)
+        style_memory = await load_writer_style_memory(db, chapter.work_id)
 
         target_words = (
             outline.target_word_count if outline and outline.target_word_count else 3000
@@ -142,6 +144,7 @@ class WriterAgent(BaseAgent):
             world_refs=(outline.world_refs if outline else None),
             rag_hits=rag_hits,
             continuity=continuity,
+            style_memory=style_memory,
         )
         messages = [LLMMessage(role="system", content=system), LLMMessage(role="user", content=user)]
 
@@ -202,6 +205,7 @@ class WriterAgent(BaseAgent):
 
         rag_hits = await _search_rag_hits(db, chapter, outline)
         continuity = await _load_continuity(db, chapter.work_id, outline, characters)
+        style_memory = await load_writer_style_memory(db, chapter.work_id)
 
         # 计算有效目标字数:请求 > outline > 默认 3000
         effective_target = target_word_count
@@ -257,6 +261,7 @@ class WriterAgent(BaseAgent):
             reference_hints=hints,
             rag_hits=rag_hits,
             continuity=continuity,
+            style_memory=style_memory,
         )
         messages = [
             LLMMessage(role="system", content=system),
@@ -265,7 +270,7 @@ class WriterAgent(BaseAgent):
 
         # 简要统计 slot 数(从 user 文本倒推)
         slot_marks = [
-            "【作品总览】", "【文风裁决】", "【本章约束锁】", "【本章大纲】", "【Reference Gate 必读】",
+            "【作品总览】", "【文风裁决】", "【仿文风格记忆】", "【本章约束锁】", "【本章大纲】", "【Reference Gate 必读】",
             "【同卷其他章节", "【世界书", "【世界条目", "【出场角色】", "【角色当前状态】",
             "【RAG 向量检索补充】", "【待收伏笔】", "【知情范围】",
             "【上一章摘要】", "【本章已有正文", "【本章任务】",

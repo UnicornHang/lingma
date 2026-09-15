@@ -254,6 +254,38 @@ Writer 写前短卡：约束锁、出场角色状态、待收伏笔、知情范�
 
 ---
 
+### 仿文 Style Mimic
+
+学习用户自备样本文风，生成作品级风格画像。**不写连续性账本**，不存样本全文。
+
+#### `POST /api/v1/works/{work_id}/style-mimic/analyze`
+粘贴样本抽画像；默认 `save=true` 落库并启用。样本 200–20000 字，分析窗约截断至 12000。LLM 失败时回退启发式。
+
+**请求体**：
+```json
+{
+  "sample_text": "……参考正文……",
+  "source_label": "可选书名备注",
+  "save": true,
+  "enabled": true
+}
+```
+
+**响应**：`portrait` / `writing_directives` / `snippets` / `profile`（已保存时）。
+
+#### `GET /api/v1/works/{work_id}/style-mimic`
+读取已保存画像；尚未生成时返回 `null`。
+
+#### `PATCH /api/v1/works/{work_id}/style-mimic`
+更新 `enabled` / `source_label`。
+
+#### `DELETE /api/v1/works/{work_id}/style-mimic`
+删除风格画像（204）。
+
+Writer 写前若画像 `enabled`，在【文风裁决】后注入【仿文风格记忆】slot。
+
+---
+
 ### 大纲 Outline
 
 #### `POST /api/v1/outline/{node_id}/ai-expand`
@@ -690,6 +722,10 @@ setInterval(() => ws.send(JSON.stringify({ type: 'ping' })), 30000);
 | DELETE | `/api/v1/chapters/{id}` | 删除章节 |
 | POST | `/api/v1/chapters/{id}/generate` | 异步生成/续写（无细纲 409） |
 | POST | `/api/v1/outline/{id}/ai-expand` | PlotAgent 扩写本章细纲（预览） |
+| POST | `/api/v1/works/{id}/style-mimic/analyze` | 仿文：分析样本并保存风格画像 |
+| GET | `/api/v1/works/{id}/style-mimic` | 获取仿文风格画像 |
+| PATCH | `/api/v1/works/{id}/style-mimic` | 更新启用状态/来源标签 |
+| DELETE | `/api/v1/works/{id}/style-mimic` | 删除仿文风格画像 |
 | GET | `/api/v1/settings/` | 应用设置 |
 | PATCH | `/api/v1/settings/` | 更新设置 |
 | GET | `/api/v1/settings/api-configs` | LLM 配置列表 |

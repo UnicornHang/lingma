@@ -50,6 +50,7 @@ async def _setup_database():
             outline,
             prompt_template,  # [P4]
             setting,
+            style_profile,  # 仿文风格画像
             task,
             tracking,
             world,
