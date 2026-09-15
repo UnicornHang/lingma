@@ -156,3 +156,46 @@ class BulkOutlineCreateRequest(BaseModel):
 
     volumes: list[PlotVolume] = Field(default_factory=list, max_length=20)
     extra_hint: str | None = None  # 占位,暂未使用
+
+
+class PlotChapterExpand(BaseModel):
+    """单章细纲扩写建议（不写库）。"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    title: str = Field(..., min_length=1, max_length=200)
+    summary: str = Field(default="", max_length=2000)
+    beats: list[str] = Field(default_factory=list, max_length=12)
+    characters_involved: list[str] = Field(default_factory=list, max_length=20)
+    target_word_count: int = Field(default=3000, ge=100, le=20_000)
+    write_constraints: WriteConstraints = Field(default_factory=WriteConstraints)
+
+    @field_validator("beats", mode="before")
+    @classmethod
+    def _coerce_beats(cls, value):
+        """兼容 LLM 把节拍写成对象列表。"""
+        if not value:
+            return []
+        out: list[str] = []
+        for item in value:
+            if isinstance(item, str) and item.strip():
+                out.append(item.strip())
+            elif isinstance(item, dict):
+                text = str(item.get("title") or item.get("summary") or "").strip()
+                if text:
+                    out.append(text)
+        return out
+
+
+class PlotChapterExpandRequest(BaseModel):
+    """扩写本章细纲。不自动落库。"""
+
+    extra_hint: str | None = Field(default=None, max_length=500)
+
+
+class PlotChapterExpandResponse(BaseModel):
+    """扩写预览，需用户确认后再 PATCH 节点。"""
+
+    suggestion: PlotChapterExpand
+    model_used: str = "mock"
+    raw_content: str = ""

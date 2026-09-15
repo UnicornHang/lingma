@@ -1119,6 +1119,22 @@ request:
 # PATCH /outline/nodes/{id} - 更新
 # DELETE /outline/nodes/{id} - 删除（级联删除子节点）
 
+# POST /outline/{id}/ai-expand - PlotAgent 扩写本章细纲（同步，不写库）
+request: { "extra_hint": "可选附加要求" }
+response:
+{
+  "suggestion": {
+    "title": "...",
+    "summary": "...",
+    "beats": ["..."],
+    "characters_involved": ["..."],
+    "target_word_count": 3000,
+    "write_constraints": { "must_happen": ["..."], "must_not_happen": [], "end_hook_debt": "..." }
+  },
+  "model_used": "..."
+}
+# 卷纲 → 409；失败 → 502。采用后前端 PATCH /outline/{id}。
+
 # POST /works/{id}/outline/ai-generate - AI 生成大纲
 request:
 {
@@ -1127,14 +1143,6 @@ request:
   "target_words": 1000000,
   "structure": "three_act | hero_journey | chinese_classical",
   "total_chapters": 100
-}
-response: 202 + task_id
-
-# POST /outline/nodes/{id}/ai-expand - 扩展节点
-request:
-{
-  "granularity": "chapter | beat",
-  "count": 5
 }
 response: 202 + task_id
 ```

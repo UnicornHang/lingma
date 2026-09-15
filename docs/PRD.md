@@ -1202,7 +1202,7 @@ POST   /works/{id}/outline/nodes      # 创建节点
 PATCH  /outline/nodes/{id}            # 更新节点
 DELETE /outline/nodes/{id}            # 删除节点
 POST   /works/{id}/outline/ai-generate   # AI 生成大纲
-POST   /outline/nodes/{id}/ai-expand  # AI 扩展节点
+POST   /outline/{id}/ai-expand        # PlotAgent 扩写本章细纲（预览，确认后 PATCH）
 ```
 
 #### 章节相关

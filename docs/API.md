@@ -254,6 +254,13 @@ Writer 写前短卡：约束锁、出场角色状态、待收伏笔、知情范�
 
 ---
 
+### 大纲 Outline
+
+#### `POST /api/v1/outline/{node_id}/ai-expand`
+PlotAgent 扩写本章细纲。**不写库**；卷纲返回 **409**。返回 `suggestion`（简介、节拍、约束锁），前端确认后再 `PATCH /outline/{id}`。
+
+---
+
 ### 章节 Chapters
 
 #### `GET /api/v1/chapters/`
@@ -682,6 +689,7 @@ setInterval(() => ws.send(JSON.stringify({ type: 'ping' })), 30000);
 | PATCH | `/api/v1/chapters/{id}` | 更新章节 |
 | DELETE | `/api/v1/chapters/{id}` | 删除章节 |
 | POST | `/api/v1/chapters/{id}/generate` | 异步生成/续写（无细纲 409） |
+| POST | `/api/v1/outline/{id}/ai-expand` | PlotAgent 扩写本章细纲（预览） |
 | GET | `/api/v1/settings/` | 应用设置 |
 | PATCH | `/api/v1/settings/` | 更新设置 |
 | GET | `/api/v1/settings/api-configs` | LLM 配置列表 |

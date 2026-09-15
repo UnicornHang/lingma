@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from uuid import UUID
 
 from sqlalchemy import select
@@ -16,10 +15,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.base import BaseAgent
 from app.agents.character_agent import _extract_json_object  # 复用 JSON 抽取逻辑
+from app.models.outline import OutlineNode, OutlineNodeType
 from app.models.work import Work
-from app.prompts.plot_prompts import build_plot_system_prompt, build_plot_user_prompt
-from app.services import prompt_template_service
-from app.schemas.outline import PlotOutlineResponse
+from app.prompts.plot_prompts import (
+    build_plot_expand_system_prompt,
+    build_plot_expand_user_prompt,
+    build_plot_system_prompt,
+    build_plot_user_prompt,
+)
+from app.schemas.outline import PlotChapterExpand, PlotChapterExpandResponse, PlotOutlineResponse
+from app.services import prompt_template_service, tracking_service
+from app.services.knowledge_scope import format_knowledge_brief
 from app.services.llm_service import (
     LLMError,
     LLMMessage,
@@ -180,6 +186,104 @@ class PlotAgent(BaseAgent):
         return PlotOutlineResponse(
             volumes=volumes, model_used=model_name, raw_content=raw_content,
         ), model_name
+
+    async def expand_chapter_outline(
+        self,
+        db: AsyncSession,
+        *,
+        node,
+        extra_hint: str | None = None,
+    ) -> tuple[PlotChapterExpandResponse | None, str]:
+        """扩写单章细纲建议（不写库）。失败返回 (None, model)。"""
+        if node.type == OutlineNodeType.VOLUME:
+            logger.warning("PlotAgent.expand_chapter_outline: 拒绝扩写卷纲 %s", node.id)
+            return None, "mock"
+
+        work = await _load_work(db, node.work_id)
+        if work is None:
+            logger.error("PlotAgent.expand_chapter_outline: work %s 不存在", node.work_id)
+            return None, "mock"
+
+        parent_title = ""
+        if node.parent_id:
+            parent = await db.get(OutlineNode, node.parent_id)
+            if parent is not None:
+                parent_title = parent.title or ""
+
+        knowledge_brief = ""
+        try:
+            ledger = await tracking_service.get_or_create_tracking(db, node.work_id)
+            knowledge_brief = format_knowledge_brief(ledger.payload, max_chars=1200)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("扩写细纲时加载账本失败: %s", exc)
+
+        constraints = node.write_constraints if isinstance(node.write_constraints, dict) else {}
+        cfg = await resolve_provider_config(db, agent_type=self.agent_type, work_id=node.work_id)
+        model_name = cfg.model if cfg else "mock"
+        user_msg = build_plot_expand_user_prompt(
+            work=work,
+            node_title=node.title,
+            node_type=node.type.value if hasattr(node.type, "value") else str(node.type),
+            summary=node.summary or "",
+            beats=list(node.beats or []),
+            characters_involved=list(node.characters_involved or []),
+            target_word_count=node.target_word_count or 3000,
+            constraints=constraints,
+            parent_title=parent_title,
+            knowledge_brief=knowledge_brief,
+            extra_hint=extra_hint,
+        )
+        llm = get_llm_service()
+        req = LLMRequest(
+            messages=[
+                LLMMessage(role="system", content=build_plot_expand_system_prompt()),
+                LLMMessage(role="user", content=user_msg),
+            ],
+            model=model_name,
+            temperature=0.6,
+            max_tokens=2048,
+            stream=False,
+        )
+        raw_content = ""
+        try:
+            resp = await llm.chat(req, cfg)
+            raw_content = resp.content or ""
+        except LLMError as e:
+            logger.error("PlotAgent 扩写细纲 LLM 失败: %s", e, exc_info=True)
+            return None, model_name
+        except Exception as e:
+            logger.error("PlotAgent 扩写细纲异常: %s", e, exc_info=True)
+            return None, model_name
+
+        suggestion = parse_expand_payload(raw_content)
+        if suggestion is None:
+            logger.warning("PlotAgent 扩写细纲 JSON 无效: raw_len=%d", len(raw_content))
+            return None, model_name
+        return (
+            PlotChapterExpandResponse(
+                suggestion=suggestion,
+                model_used=model_name,
+                raw_content=raw_content,
+            ),
+            model_name,
+        )
+
+
+def parse_expand_payload(raw_content: str) -> PlotChapterExpand | None:
+    """从 LLM 原文抽出 PlotChapterExpand；失败返回 None。"""
+    json_text = _extract_json_object(raw_content or "")
+    if not json_text:
+        return None
+    try:
+        parsed = json.loads(json_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    try:
+        return PlotChapterExpand.model_validate(parsed)
+    except Exception:
+        return None
 
 
 # ==================== DB 加载辅助 ====================

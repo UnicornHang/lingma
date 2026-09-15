@@ -94,6 +94,26 @@ export interface BulkOutlineCreateRequest {
   extra_hint?: string;
 }
 
+/** 单章细纲扩写建议（不自动落库） */
+export interface PlotChapterExpand {
+  title: string;
+  summary: string;
+  beats: string[];
+  characters_involved: string[];
+  target_word_count: number;
+  write_constraints: WriteConstraints;
+}
+
+export interface PlotChapterExpandRequest {
+  extra_hint?: string;
+}
+
+export interface PlotChapterExpandResponse {
+  suggestion: PlotChapterExpand;
+  model_used: string;
+  raw_content?: string;
+}
+
 export const outlineApi = {
   list: (workId: string) => http.get<{ total: number; items: OutlineNode[] }>(`/works/${workId}/outline`),
 
@@ -124,6 +144,10 @@ export const outlineApi = {
     target_chapter_count?: number | null;
     extra_hint?: string;
   }) => http.post<PlotOutlineResponse>('/outline/ai-preview', payload),
+
+  /** PlotAgent 扩写本章细纲；返回建议，需再 update 落库 */
+  aiExpand: (nodeId: string, payload?: PlotChapterExpandRequest) =>
+    http.post<PlotChapterExpandResponse>(`/outline/${nodeId}/ai-expand`, payload ?? {}),
 
   bulkCreate: (workId: string, payload: BulkOutlineCreateRequest) =>
     http.post<OutlineTreeResponse>(`/works/${workId}/outline/bulk-create`, payload),

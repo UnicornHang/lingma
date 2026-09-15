@@ -76,3 +76,81 @@ def build_plot_user_prompt(
         现在请直接输出 JSON。
         """
     ).strip()
+
+
+def build_plot_expand_system_prompt() -> str:
+    """扩写单章细纲：产出约束锁，不写正文。"""
+    return dedent(
+        """\
+        你是资深网文主编，负责把一章粗纲扩写成可写正文的细纲。
+
+        【输出纪律 - 严格遵守】
+        1. **只输出 JSON 对象**，禁止 markdown fence。
+        2. **禁止 thinking aloud**。
+        3. **禁止写章节正文**。只规划：简介、节拍、约束锁。
+        4. JSON 字段（英文 key，不得增减）：
+           - title (str)
+           - summary (str, 4-8 句，写清因果与章内转折)
+           - beats (list[str], 3-6 条节拍，每条一句)
+           - characters_involved (list[str])
+           - target_word_count (int, 100-20000)
+           - write_constraints (object):
+             - must_happen (list[str], 2-6 条本章必须发生的情节变化)
+             - must_not_happen (list[str], 0-4 条禁止)
+             - time_anchor (str)
+             - stop_point (str, 本章停在哪)
+             - end_hook_debt (str, 留给下一章的期待)
+             - word_count_min (int 或 null)
+             - word_count_max (int 或 null)
+        5. 保留用户已有设定，只补具体、可执行的细节，不要推翻标题主旨。
+        6. 知情范围：角色不得提前知道「未知」或作者真相。
+        """
+    ).strip()
+
+
+def build_plot_expand_user_prompt(
+    *,
+    work: "Work",
+    node_title: str,
+    node_type: str,
+    summary: str,
+    beats: list[str],
+    characters_involved: list[str],
+    target_word_count: int,
+    constraints: dict,
+    parent_title: str = "",
+    knowledge_brief: str = "",
+    extra_hint: str | None = None,
+) -> str:
+    """把当前章纲与作品上下文交给 Plot 扩写。"""
+    genre = work.genre.value if hasattr(work.genre, "value") else (work.genre or _EMPTY)
+    beats_text = "\n".join(f"- {b}" for b in beats) or "（无）"
+    must = constraints.get("must_happen") or []
+    must_not = constraints.get("must_not_happen") or []
+    extra_text = (
+        f"\n【用户附加要求】\n{extra_hint.strip()}\n"
+        if extra_hint and extra_hint.strip()
+        else ""
+    )
+    knowledge_text = f"\n{knowledge_brief.strip()}\n" if knowledge_brief.strip() else ""
+    parent_text = f"【所属卷】{parent_title}\n" if parent_title else ""
+
+    return dedent(
+        f"""\
+        【作品标题】{work.title}
+        【类型】{genre}
+        【一句话简介】{work.logline or _EMPTY}
+        {parent_text}【节点类型】{node_type}
+        【当前标题】{node_title}
+        【当前简介】{summary or _EMPTY}
+        【当前节拍】
+        {beats_text}
+        【出场角色】{"、".join(characters_involved) or _EMPTY}
+        【目标字数】{target_word_count}
+        【已有必须发生】{"；".join(must) or _EMPTY}
+        【已有禁止发生】{"；".join(must_not) or _EMPTY}
+        【已有章尾新债】{constraints.get("end_hook_debt") or _EMPTY}
+        {knowledge_text}{extra_text}
+        请扩写本章细纲，直接输出 JSON。
+        """
+    ).strip()

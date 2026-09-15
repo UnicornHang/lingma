@@ -13,9 +13,17 @@ import {
   FileText,
   Pencil,
   PenLine,
+  Wand2,
 } from 'lucide-react';
 
-import { outlineApi, chaptersApi, type OutlineTreeNode, type OutlineNodeCreate, type OutlineNodeUpdate } from '@/api';
+import {
+  outlineApi,
+  chaptersApi,
+  type OutlineTreeNode,
+  type OutlineNodeCreate,
+  type OutlineNodeUpdate,
+  type PlotChapterExpand,
+} from '@/api';
 
 /** 把多行文本拆成约束列表。 */
 function splitLines(value: unknown): string[] {
@@ -34,6 +42,8 @@ export default function OutlinePage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<OutlineTreeNode | null>(null);
+  const [expandTarget, setExpandTarget] = useState<OutlineTreeNode | null>(null);
+  const [expandSuggestion, setExpandSuggestion] = useState<PlotChapterExpand | null>(null);
   const [form] = Form.useForm();
 
   const treeQuery = useQuery({
@@ -100,6 +110,53 @@ export default function OutlinePage() {
     },
   });
 
+  const expandMutation = useMutation({
+    mutationFn: (node: OutlineTreeNode) => outlineApi.aiExpand(node.id),
+    onSuccess: (resp) => {
+      setExpandSuggestion(resp.suggestion);
+      message.success(`细纲扩写完成（${resp.model_used}），请确认后采用`);
+    },
+    onError: (err: unknown) => {
+      message.error(err instanceof Error ? err.message : '扩写失败');
+      setExpandTarget(null);
+      setExpandSuggestion(null);
+    },
+  });
+
+  const applyExpandMutation = useMutation({
+    mutationFn: async () => {
+      if (!expandTarget || !expandSuggestion) {
+        throw new Error('没有可采用的扩写结果');
+      }
+      const wc = expandSuggestion.write_constraints;
+      return outlineApi.update(expandTarget.id, {
+        title: expandSuggestion.title,
+        summary: expandSuggestion.summary,
+        beats: expandSuggestion.beats,
+        characters_involved: expandSuggestion.characters_involved,
+        target_word_count: expandSuggestion.target_word_count,
+        write_constraints: {
+          word_count_min: wc?.word_count_min ?? null,
+          word_count_max: wc?.word_count_max ?? null,
+          must_happen: wc?.must_happen ?? [],
+          must_not_happen: wc?.must_not_happen ?? [],
+          time_anchor: wc?.time_anchor ?? '',
+          stop_point: wc?.stop_point ?? '',
+          end_hook_debt: wc?.end_hook_debt ?? '',
+        },
+      });
+    },
+    onSuccess: () => {
+      message.success('已采用扩写细纲');
+      qc.invalidateQueries({ queryKey: ['outline-tree', workId] });
+      setExpandTarget(null);
+      setExpandSuggestion(null);
+    },
+    onError: (err: unknown) => {
+      message.error(err instanceof Error ? err.message : '写入失败');
+    },
+  });
+
   const toggle = (nid: string) => setExpanded((prev) => ({ ...prev, [nid]: !prev[nid] }));
 
   if (!workId) return <Empty description="缺少作品 ID" />;
@@ -146,6 +203,17 @@ export default function OutlinePage() {
       end_hook_debt: wc?.end_hook_debt ?? '',
     });
     setModalOpen(true);
+  };
+
+  /** 触发 PlotAgent 扩写；卷纲不可扩。 */
+  const openExpand = (node: OutlineTreeNode) => {
+    if (node.type === 'volume') {
+      message.warning('请选择章纲或节拍再扩写细纲');
+      return;
+    }
+    setExpandTarget(node);
+    setExpandSuggestion(null);
+    expandMutation.mutate(node);
   };
 
   const handleSubmit = async () => {
@@ -228,6 +296,7 @@ export default function OutlinePage() {
                 onToggle={toggle}
                 onAddChild={(parent) => openCreate(parent)}
                 onEdit={openEdit}
+                onExpand={openExpand}
                 onWriteChapter={(node) => writeChapterMutation.mutate(node)}
                 onDelete={(nid) => {
                   Modal.confirm({
@@ -237,7 +306,6 @@ export default function OutlinePage() {
                     onOk: () => deleteMutation.mutateAsync(nid),
                   });
                 }}
-                workId={workId}
               />
             ))}
           </div>
@@ -293,6 +361,103 @@ export default function OutlinePage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <Modal
+        title={expandTarget ? `扩写细纲 · ${expandTarget.title}` : '扩写细纲'}
+        open={!!expandTarget}
+        onCancel={() => {
+          if (expandMutation.isPending || applyExpandMutation.isPending) return;
+          setExpandTarget(null);
+          setExpandSuggestion(null);
+        }}
+        okText="采用并写入"
+        cancelText="丢弃"
+        onOk={() => applyExpandMutation.mutate()}
+        confirmLoading={applyExpandMutation.isPending}
+        okButtonProps={{ disabled: !expandSuggestion || expandMutation.isPending }}
+        width={720}
+        destroyOnClose
+      >
+        {expandMutation.isPending && !expandSuggestion ? (
+          <div className="flex items-center justify-center py-10">
+            <Spin tip="PlotAgent 正在扩写细纲…" />
+          </div>
+        ) : expandSuggestion ? (
+          <ExpandPreview current={expandTarget} suggestion={expandSuggestion} />
+        ) : (
+          <Empty description="暂无扩写结果" />
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+function ExpandPreview({
+  current,
+  suggestion,
+}: {
+  current: OutlineTreeNode | null;
+  suggestion: PlotChapterExpand;
+}) {
+  const wc = suggestion.write_constraints;
+  return (
+    <div className="flex flex-col gap-4 max-h-[60vh] overflow-y-auto pr-1">
+      <p className="text-body-sm text-on-surface-variant">
+        以下为 PlotAgent 建议，确认后才会写入大纲。不会自动生成正文。
+      </p>
+      <CompareBlock label="标题" before={current?.title} after={suggestion.title} />
+      <CompareBlock label="简介" before={current?.summary} after={suggestion.summary} />
+      <CompareBlock
+        label="节拍"
+        before={(current?.beats ?? []).join('；')}
+        after={(suggestion.beats ?? []).join('；')}
+      />
+      <CompareBlock
+        label="必须发生"
+        before={(current?.write_constraints?.must_happen ?? []).join('；')}
+        after={(wc?.must_happen ?? []).join('；')}
+      />
+      <CompareBlock
+        label="禁止发生"
+        before={(current?.write_constraints?.must_not_happen ?? []).join('；')}
+        after={(wc?.must_not_happen ?? []).join('；')}
+      />
+      <CompareBlock
+        label="章尾新债"
+        before={current?.write_constraints?.end_hook_debt}
+        after={wc?.end_hook_debt}
+      />
+      <CompareBlock
+        label="目标字数"
+        before={String(current?.target_word_count ?? '')}
+        after={String(suggestion.target_word_count)}
+      />
+    </div>
+  );
+}
+
+function CompareBlock({
+  label,
+  before,
+  after,
+}: {
+  label: string;
+  before?: string | null;
+  after?: string | null;
+}) {
+  return (
+    <div className="rounded-lg border border-outline-variant/40 p-3 flex flex-col gap-2">
+      <span className="text-label-md font-semibold text-on-surface">{label}</span>
+      <div className="grid grid-cols-2 gap-3 text-body-sm">
+        <div>
+          <div className="text-label-sm text-on-surface-variant mb-1">当前</div>
+          <p className="text-on-surface-variant whitespace-pre-wrap">{before?.trim() || '（空）'}</p>
+        </div>
+        <div>
+          <div className="text-label-sm text-primary mb-1">建议</div>
+          <p className="text-on-surface whitespace-pre-wrap">{after?.trim() || '（空）'}</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -304,9 +469,9 @@ function OutlineRow({
   onToggle,
   onAddChild,
   onEdit,
+  onExpand,
   onWriteChapter,
   onDelete,
-  workId,
 }: {
   node: OutlineTreeNode;
   depth: number;
@@ -314,9 +479,9 @@ function OutlineRow({
   onToggle: (id: string) => void;
   onAddChild: (parent: OutlineTreeNode) => void;
   onEdit: (node: OutlineTreeNode) => void;
+  onExpand: (node: OutlineTreeNode) => void;
   onWriteChapter: (node: OutlineTreeNode) => void;
   onDelete: (id: string) => void;
-  workId: string;
 }) {
   const hasChildren = node.children && node.children.length > 0;
   const isExpanded = expanded[node.id] ?? depth < 1;
@@ -342,6 +507,16 @@ function OutlineRow({
           目标 {node.target_word_count.toLocaleString()} 字
         </span>
         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+          {node.type !== 'volume' && (
+            <Button
+              type="text"
+              shape="circle"
+              size="small"
+              onClick={() => onExpand(node)}
+              icon={<Wand2 size={14} />}
+              title="AI 扩写细纲"
+            />
+          )}
           {node.type === 'chapter' && (
             <Button
               type="text"
@@ -390,9 +565,9 @@ function OutlineRow({
               onToggle={onToggle}
               onAddChild={onAddChild}
               onEdit={onEdit}
+              onExpand={onExpand}
               onWriteChapter={onWriteChapter}
               onDelete={onDelete}
-              workId={workId}
             />
           ))}
         </div>

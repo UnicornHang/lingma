@@ -1,8 +1,9 @@
 """大纲节点 CRUD API"""
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.plot_agent import PlotAgent
@@ -16,11 +17,12 @@ from app.schemas.outline import (
     OutlineNodeUpdate,
     OutlineTreeNode,
     OutlineTreeResponse,
+    PlotChapterExpandRequest,
+    PlotChapterExpandResponse,
     PlotOutlineRequest,
     PlotOutlineResponse,
 )
 from app.services import outline_service
-from sqlalchemy import select
 
 router = APIRouter()
 
@@ -53,20 +55,7 @@ async def get_outline_tree_endpoint(
     items, _ = await outline_service.list_outline_nodes(db, work_id)
 
     by_id: dict[UUID, OutlineTreeNode] = {
-        n.id: OutlineTreeNode(
-            id=n.id,
-            parent_id=n.parent_id,
-            type=n.type,
-            title=n.title,
-            summary=n.summary,
-            beats=n.beats,
-            characters_involved=n.characters_involved,
-            world_refs=n.world_refs,
-            target_word_count=n.target_word_count,
-            order=n.order,
-            children=[],
-        )
-        for n in items
+        n.id: _to_tree_node(n) for n in items
     }
 
     roots: list[OutlineTreeNode] = []
@@ -86,6 +75,24 @@ async def get_outline_tree_endpoint(
         r.children.sort(key=lambda x: (x.order, x.title))
 
     return OutlineTreeResponse(work_id=work_id, nodes=roots)
+
+
+def _to_tree_node(n: OutlineNode) -> OutlineTreeNode:
+    """ORM 节点 → 树节点（含约束锁）。"""
+    return OutlineTreeNode(
+        id=n.id,
+        parent_id=n.parent_id,
+        type=n.type,
+        title=n.title,
+        summary=n.summary,
+        beats=n.beats or [],
+        characters_involved=n.characters_involved or [],
+        world_refs=n.world_refs or [],
+        target_word_count=n.target_word_count,
+        order=n.order,
+        write_constraints=n.write_constraints or {},
+        children=[],
+    )
 
 
 @router.post(
@@ -131,6 +138,34 @@ async def update_outline_node_endpoint(
     await db.commit()
     await db.refresh(node)
     return OutlineNodeRead.model_validate(node)
+
+
+@router.post(
+    "/outline/{node_id}/ai-expand",
+    response_model=PlotChapterExpandResponse,
+    summary="AI 扩写本章细纲（PlotAgent，不写库）",
+)
+async def expand_outline_node_endpoint(
+    node_id: UUID,
+    payload: PlotChapterExpandRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> PlotChapterExpandResponse:
+    """只返回建议；采用后由前端 PATCH /outline/{id}。卷纲不可扩写。"""
+    node = await outline_service.get_outline_node(db, node_id)
+    if node.type == OutlineNodeType.VOLUME:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="请选择章纲或节拍节点再扩写细纲，卷纲不能直接扩写成章细纲。",
+        )
+    agent = PlotAgent()
+    hint = payload.extra_hint if payload else None
+    result, _model = await agent.expand_chapter_outline(db, node=node, extra_hint=hint)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="细纲扩写失败，请稍后重试或先手改简介与约束锁。",
+        )
+    return result
 
 
 @router.delete(
@@ -294,20 +329,7 @@ async def bulk_create_outline_nodes(
 
     # 构造响应树
     by_id: dict[UUID, OutlineTreeNode] = {
-        n.id: OutlineTreeNode(
-            id=n.id,
-            parent_id=n.parent_id,
-            type=n.type,
-            title=n.title,
-            summary=n.summary,
-            beats=n.beats,
-            characters_involved=n.characters_involved,
-            world_refs=n.world_refs,
-            target_word_count=n.target_word_count,
-            order=n.order,
-            children=[],
-        )
-        for n in created_nodes
+        n.id: _to_tree_node(n) for n in created_nodes
     }
     roots: list[OutlineTreeNode] = []
     for n in created_nodes:
