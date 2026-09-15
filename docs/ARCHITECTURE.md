@@ -216,7 +216,7 @@ src/
 | **Plot** | 规划 | 总纲/卷纲/节拍设计 | logline / 一句话简介 | 分卷结构 + 节拍列表 |
 | **World** | 规划 | 世界观圣经 | 题材 + 灵感关键词 | 地理/势力/修炼体系 |
 | **Character** | 规划 | 角色档案 | 大纲 + 主题 | 角色卡（多张） |
-| **Writer** | 生成 | 章节正文 | 约束锁 + 人设/状态卡 + 细纲 + RAG 补充 | TipTap JSON + plain text |
+| Writer | 生成 | 章节正文 | 约束锁 + 人设/状态卡 + 细纲 + RAG 补充；写前 `outline_gate` | TipTap JSON + plain text |
 | **Editor** | 编辑 | 风格润色 | 章节草稿 | 润色版本 + 修改建议 |
 | **Critic** | 评估 | 质量评估 | 章节正文 + 上下文 | 评分 + 问题清单 |
 

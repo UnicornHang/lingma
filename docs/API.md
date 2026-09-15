@@ -311,6 +311,13 @@ Writer 写前短卡：约束锁、出场角色状态、待收伏笔、知情范�
 
 ---
 
+#### `POST /api/v1/chapters/{chapter_id}/generate`
+异步生成/续写。未关联章纲、关联卷纲、或细纲缺少简介/节拍/「必须发生」时返回 **409**。
+
+生成完成后服务端自动 `tracking/commit` 一条读者进度（失败只记日志，不阻断写作）。
+
+---
+
 #### `DELETE /api/v1/chapters/{chapter_id}`
 删除章节。
 
@@ -674,6 +681,7 @@ setInterval(() => ws.send(JSON.stringify({ type: 'ping' })), 30000);
 | GET | `/api/v1/chapters/{id}` | 章节详情 |
 | PATCH | `/api/v1/chapters/{id}` | 更新章节 |
 | DELETE | `/api/v1/chapters/{id}` | 删除章节 |
+| POST | `/api/v1/chapters/{id}/generate` | 异步生成/续写（无细纲 409） |
 | GET | `/api/v1/settings/` | 应用设置 |
 | PATCH | `/api/v1/settings/` | 更新设置 |
 | GET | `/api/v1/settings/api-configs` | LLM 配置列表 |

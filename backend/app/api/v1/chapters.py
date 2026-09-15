@@ -4,7 +4,7 @@ import json
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +40,7 @@ from app.schemas.chapter import (
 from app.schemas.critic import CriticEvaluationListItem
 from app.services import chapter_service
 from app.services import work_service
+from app.services.outline_gate import OutlineGateError, resolve_outline_for_write
 from app.services.ai_pattern_detector import summarize as summarize_findings
 from app.services.llm_service import (
     LLMMessage,
@@ -157,6 +158,12 @@ async def generate_chapter_endpoint(
         # mode='json' 确保 UUID 等非 JSON 原生类型序列化为字符串,
         # 否则 SQLAlchemy 写 params JSON 列时会抛 TypeError
         params = payload.model_dump(exclude_none=True, mode="json")
+
+    outline_id = payload.outline_node_id if payload else None
+    try:
+        await resolve_outline_for_write(db, chapter, outline_id)
+    except OutlineGateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.message) from exc
 
     task = GenerationTask(
         work_id=chapter.work_id,

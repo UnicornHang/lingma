@@ -17,9 +17,12 @@ _client.interceptors.request.use(
 // 响应拦截器：解包成 response.data
 _client.interceptors.response.use(
   (response) => response.data,
-  (error: AxiosError<{ error?: { code: string; message: string } }>) => {
+  (error: AxiosError<{ error?: { code: string; message: string }; detail?: unknown }>) => {
+    const data = error.response?.data;
+    const rawDetail = data?.detail;
+    const detailText = typeof rawDetail === 'string' ? rawDetail : undefined;
     const message =
-      error.response?.data?.error?.message || error.message || '请求失败';
+      data?.error?.message || detailText || error.message || '请求失败';
     console.error('[API Error]', message);
     return Promise.reject(new Error(message));
   }

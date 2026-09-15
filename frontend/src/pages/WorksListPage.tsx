@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom';
 
 import { worksApi, type Work, type Paginated } from '@/api/works';
 import { checkHealth } from '@/api/client';
+import { useCurrentWorkStore } from '@/stores/useCurrentWorkStore';
 
 const GENRE_LABEL: Record<string, { label: string; chipClass: string }> = {
   fantasy:    { label: '玄幻', chipClass: 'chip-tertiary' },
@@ -39,10 +40,9 @@ const STATUS_GRADIENT: Record<string, string> = {
   archived: 'from-[#b91c1c] via-[#dc2626] to-[#f87171]',  // 暗红渐变
 };
 
-function WorkCard({ work }: { work: Work }) {
+function WorkCard({ work, isCurrent }: { work: Work; isCurrent: boolean }) {
   const genre = GENRE_LABEL[work.genre] || GENRE_LABEL.other;
   const status = STATUS_CHIP[work.status] || STATUS_CHIP.draft;
-  const isCurrent = work.title === '剑来·前传';
   const gradient = STATUS_GRADIENT[work.status] || STATUS_GRADIENT.draft;
   const wordWan = (work.word_count / 10000).toFixed(1);
   const targetWan = (work.target_word_count / 10000).toFixed(0);
@@ -103,6 +103,7 @@ function WorkCard({ work }: { work: Work }) {
 
 export default function WorksListPage() {
   const { message } = App.useApp();
+  const currentWorkId = useCurrentWorkStore((s) => s.currentWorkId);
   const { data, isLoading, error } = useQuery({
     queryKey: ['works'],
     queryFn: () => worksApi.list({ page: 1, page_size: 50 }),
@@ -255,7 +256,7 @@ export default function WorksListPage() {
       {/* Grid */}
       <div className="grid grid-cols-4 gap-4 px-8 pb-8">
         {demoWorks.map((w) => (
-          <WorkCard key={w.id} work={w} />
+          <WorkCard key={w.id} work={w} isCurrent={w.id === currentWorkId} />
         ))}
         <Link
           to="/works/new"

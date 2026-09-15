@@ -220,6 +220,10 @@ export default function ChapterEditorPage() {
       message.info('已有生成任务在进行中');
       return;
     }
+    if (!outlineNodeId) {
+      message.warning('尚未关联章纲。请先在大纲中创建本章细纲并关联后再写正文。');
+      return;
+    }
     try {
       // 关键:AI 看到的是 DB 中的 plain_content,若本地有未保存编辑需先落盘,
       // 避免 AI 续写接续在旧版本之后。
@@ -810,11 +814,11 @@ export default function ChapterEditorPage() {
               size="small"
               icon={<Bot size={16} />}
               onClick={handleAiContinue}
-              disabled={isStreaming}
+              disabled={isStreaming || !outlineNodeId}
               title={
                 outlineNodeId
                   ? `AI 续写 ${currentOutlineTarget.toLocaleString()} 字(基于大纲节点 ${outlineNodeId.slice(0, 8)})`
-                  : `AI 续写 ${currentOutlineTarget.toLocaleString()} 字`
+                  : '尚未关联章纲，无法续写'
               }
             >
               续写

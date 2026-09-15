@@ -11,9 +11,10 @@ import {
   Sparkles,
   Network,
   FileText,
+  Pencil,
 } from 'lucide-react';
 
-import { outlineApi, type OutlineTreeNode, type OutlineNodeCreate } from '@/api';
+import { outlineApi, type OutlineTreeNode, type OutlineNodeCreate, type OutlineNodeUpdate } from '@/api';
 
 /** 把多行文本拆成约束列表。 */
 function splitLines(value: unknown): string[] {
@@ -46,9 +47,25 @@ export default function OutlinePage() {
       qc.invalidateQueries({ queryKey: ['outline-tree', workId] });
       setModalOpen(false);
       form.resetFields();
+      setEditingNode(null);
     },
     onError: (err: unknown) => {
       message.error(err instanceof Error ? err.message : '创建失败');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ nodeId, payload }: { nodeId: string; payload: OutlineNodeUpdate }) =>
+      outlineApi.update(nodeId, payload),
+    onSuccess: () => {
+      message.success('已更新大纲节点');
+      qc.invalidateQueries({ queryKey: ['outline-tree', workId] });
+      setModalOpen(false);
+      form.resetFields();
+      setEditingNode(null);
+    },
+    onError: (err: unknown) => {
+      message.error(err instanceof Error ? err.message : '更新失败');
     },
   });
 
@@ -86,6 +103,27 @@ export default function OutlinePage() {
       beats: [],
       target_word_count: 3000,
       order: 0,
+      must_happen: '',
+      must_not_happen: '',
+      end_hook_debt: '',
+    });
+    setModalOpen(true);
+  };
+
+  /** 打开已有节点，回填约束锁以便补纲。 */
+  const openEdit = (node: OutlineTreeNode) => {
+    setEditingNode(node);
+    const wc = node.write_constraints;
+    form.setFieldsValue({
+      type: node.type,
+      parent_id: node.parent_id,
+      title: node.title,
+      summary: node.summary ?? '',
+      target_word_count: node.target_word_count,
+      order: node.order,
+      must_happen: (wc?.must_happen ?? []).join('\n'),
+      must_not_happen: (wc?.must_not_happen ?? []).join('\n'),
+      end_hook_debt: wc?.end_hook_debt ?? '',
     });
     setModalOpen(true);
   };
@@ -95,6 +133,30 @@ export default function OutlinePage() {
       const values = await form.validateFields();
       const mustHappen = splitLines(values.must_happen);
       const mustNot = splitLines(values.must_not_happen);
+      const writeConstraints = {
+        word_count_min: editingNode?.write_constraints?.word_count_min ?? null,
+        word_count_max: editingNode?.write_constraints?.word_count_max ?? null,
+        must_happen: mustHappen,
+        must_not_happen: mustNot,
+        time_anchor: editingNode?.write_constraints?.time_anchor ?? '',
+        stop_point: editingNode?.write_constraints?.stop_point ?? '',
+        end_hook_debt: values.end_hook_debt ?? '',
+      };
+      if (editingNode) {
+        await updateMutation.mutateAsync({
+          nodeId: editingNode.id,
+          payload: {
+            type: values.type,
+            parent_id: values.parent_id ?? null,
+            title: values.title,
+            summary: values.summary ?? '',
+            target_word_count: values.target_word_count ?? 3000,
+            order: values.order ?? 0,
+            write_constraints: writeConstraints,
+          },
+        });
+        return;
+      }
       await createMutation.mutateAsync({
         work_id: workId,
         type: values.type,
@@ -104,13 +166,7 @@ export default function OutlinePage() {
         beats: values.beats ?? [],
         target_word_count: values.target_word_count ?? 3000,
         order: values.order ?? 0,
-        write_constraints: {
-          must_happen: mustHappen,
-          must_not_happen: mustNot,
-          time_anchor: '',
-          stop_point: '',
-          end_hook_debt: values.end_hook_debt ?? '',
-        },
+        write_constraints: writeConstraints,
       });
     } catch {
       /* 表单校验失败 */
@@ -151,6 +207,7 @@ export default function OutlinePage() {
                 expanded={expanded}
                 onToggle={toggle}
                 onAddChild={(parent) => openCreate(parent)}
+                onEdit={openEdit}
                 onDelete={(nid) => {
                   Modal.confirm({
                     title: '确认删除该节点？',
@@ -171,12 +228,13 @@ export default function OutlinePage() {
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleSubmit}
-        confirmLoading={createMutation.isPending}
+        confirmLoading={createMutation.isPending || updateMutation.isPending}
         destroyOnClose
       >
         <Form form={form} layout="vertical">
           <Form.Item label="类型" name="type" rules={[{ required: true }]}>
             <Select
+              disabled={!!editingNode}
               options={[
                 { value: 'volume',  label: '卷' },
                 { value: 'chapter', label: '章' },
@@ -224,6 +282,7 @@ function OutlineRow({
   expanded,
   onToggle,
   onAddChild,
+  onEdit,
   onDelete,
   workId,
 }: {
@@ -232,6 +291,7 @@ function OutlineRow({
   expanded: Record<string, boolean>;
   onToggle: (id: string) => void;
   onAddChild: (parent: OutlineTreeNode) => void;
+  onEdit: (node: OutlineTreeNode) => void;
   onDelete: (id: string) => void;
   workId: string;
 }) {
@@ -263,6 +323,14 @@ function OutlineRow({
             type="text"
             shape="circle"
             size="small"
+            onClick={() => onEdit(node)}
+            icon={<Pencil size={14} />}
+            title="编辑约束锁"
+          />
+          <Button
+            type="text"
+            shape="circle"
+            size="small"
             onClick={() => onAddChild(node)}
             icon={<Plus size={14} />}
             title="新增子节点"
@@ -288,6 +356,7 @@ function OutlineRow({
               expanded={expanded}
               onToggle={onToggle}
               onAddChild={onAddChild}
+              onEdit={onEdit}
               onDelete={onDelete}
               workId={workId}
             />

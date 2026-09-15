@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 
 import { AppLayout } from '@/components/Layout/AppLayout';
+import { useCurrentWorkStore } from '@/stores/useCurrentWorkStore';
 
 // 懒加载页面
 const HomePage           = lazy(() => import('@/pages/HomePage'));
@@ -24,6 +25,15 @@ function LoadingFallback() {
   );
 }
 
+/** 旧路径 /outline 等转到当前作品设定页；没有当前作品则去作品库。 */
+function RedirectSetting({ segment }: { segment: 'outline' | 'characters' | 'world' }) {
+  const currentWorkId = useCurrentWorkStore((s) => s.currentWorkId);
+  if (currentWorkId) {
+    return <Navigate to={`/works/${currentWorkId}/${segment}`} replace />;
+  }
+  return <Navigate to="/works" replace />;
+}
+
 export function AppRouter() {
   return (
     <Suspense fallback={<LoadingFallback />}>
@@ -41,10 +51,9 @@ export function AppRouter() {
           <Route path="/editor" element={<ChapterEditorPage />} />
           <Route path="/editor/:chapterId" element={<ChapterEditorPage />} />
 
-          {/* 作品设定 — 顶级旧路径自动重定向到 WorksListPage */}
-          <Route path="/outline"    element={<Navigate to="/works" replace />} />
-          <Route path="/characters" element={<Navigate to="/works" replace />} />
-          <Route path="/world"      element={<Navigate to="/works" replace />} />
+          <Route path="/outline" element={<RedirectSetting segment="outline" />} />
+          <Route path="/characters" element={<RedirectSetting segment="characters" />} />
+          <Route path="/world" element={<RedirectSetting segment="world" />} />
 
           {/* 系统设置 */}
           <Route path="/settings" element={<Navigate to="/settings/general" replace />} />

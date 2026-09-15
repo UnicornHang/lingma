@@ -40,11 +40,13 @@ from app.agents.writer_agent import WriterAgent
 from app.db.session import async_session_factory
 from app.models.chapter import Chapter, ChapterStatus, ChapterVersion
 from app.models.task import GenerationTask, TaskStatus, TaskType
+from app.models.work import Work
 from app.orchestrator import get_orchestrator
 from app.prompts.editor_prompts import build_rewrite_full_chapter_prompt
 from app.services.ai_pattern_detector import AIPatternDetector, Severity, summarize as summarize_findings
 from app.services.chapter_role_resolver import resolve_chapter_role
 from app.services.chapter_service import count_words
+from app.services.outline_gate import OutlineGateError, resolve_outline_for_write
 from app.services.llm_service import (
     LLMError,
     LLMMessage,
@@ -162,8 +164,8 @@ async def _handle_start(
             return
 
         chapter_id = task.chapter_id
-        # 加载 chapter 以便获取 work_id(P1-2 预填需要)
         work_id = None
+        ch_row = None
         if chapter_id is not None:
             ch_row = await db.get(Chapter, chapter_id)
             if ch_row is not None:
@@ -189,6 +191,20 @@ async def _handle_start(
             except ValueError:
                 logger.warning("outline_node_id 不是合法 UUID: %r,忽略", outline_node_id)
                 outline_node_id = None
+
+        if ch_row is not None:
+            try:
+                await resolve_outline_for_write(
+                    db,
+                    ch_row,
+                    outline_node_id if isinstance(outline_node_id, uuid.UUID) else None,
+                )
+            except OutlineGateError as gate_err:
+                await websocket.send_json({"type": "error", "error": gate_err.message})
+                task.status = TaskStatus.FAILED
+                task.error = gate_err.message
+                await db.commit()
+                return
         # [提交 C] 自动去味开关(默认开)
         auto_polish = bool(params.get("auto_polish", True))
         max_blocking_for_rewrite = int(params.get("max_blocking_for_rewrite", 0))
@@ -212,9 +228,8 @@ async def _handle_start(
         # 文风关键词(从 work 取,供自动去味 prompt 使用)
         work_style_keywords: list[str] = []
         try:
-            if chapter and chapter.work_id:
-                from app.models.work import Work as _Work
-                work_obj = await db.get(_Work, chapter.work_id)
+            if ch_row is not None:
+                work_obj = await db.get(Work, ch_row.work_id)
                 if work_obj and work_obj.style_keywords:
                     work_style_keywords = list(work_obj.style_keywords)
         except Exception:
@@ -535,6 +550,7 @@ async def _handle_start(
                 )
             else:
                 await _finalize_chapter(db, chapter_id, full_content)
+            await _auto_commit_tracking(db, chapter_id)
 
     # ===== 给前端回报 =====
     if error_msg:
@@ -703,6 +719,29 @@ async def _partial_save_chapter(
         ch.plain_content = clean_content
     ch.word_count = count_words(ch.plain_content)
     await db.commit()
+
+
+async def _auto_commit_tracking(db, chapter_id: uuid.UUID) -> None:
+    """写完一章后把「读者已读到此」写入连续性账本，失败不阻断写作。"""
+    from app.schemas.tracking import TrackingCommitRequest
+    from app.services.tracking_service import commit_tracking
+
+    ch = await db.get(Chapter, chapter_id)
+    if ch is None:
+        return
+    try:
+        await commit_tracking(
+            db,
+            ch.work_id,
+            TrackingCommitRequest(
+                chapter_id=ch.id,
+                reader_events=[f"读者已读到《{ch.title}》"],
+                note=f"系统自动提交：本章约 {ch.word_count} 字。",
+            ),
+        )
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("写后追踪自动提交失败: %s", exc)
 
 
 async def _finalize_chapter(db, chapter_id: uuid.UUID, full_content: str) -> None:

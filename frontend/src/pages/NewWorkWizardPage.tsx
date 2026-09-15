@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 
 import { worksApi, outlineApi, type Genre, type PlotVolume } from '@/api';
+import { useCurrentWorkStore } from '@/stores/useCurrentWorkStore';
 
 const STEPS = [
   { key: 'basics', label: '基础信息' },
@@ -73,6 +74,7 @@ function parseWordCount(input: string, fallback = 1_000_000): number {
 export default function NewWorkWizardPage() {
   const navigate = useNavigate();
   const { message } = App.useApp();
+  const setCurrentWorkId = useCurrentWorkStore((s) => s.setCurrentWorkId);
 
   const [step, setStep] = useState(0); // 0-based: 0..4
   const [audience, setAudience] = useState<'male' | 'female' | 'all'>('male');
@@ -208,6 +210,7 @@ export default function NewWorkWizardPage() {
         message.success(`作品《${created.title}》创建成功`);
       }
       navigate(`/works/${created.id}`);
+      setCurrentWorkId(created.id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '创建失败';
       message.error(msg);

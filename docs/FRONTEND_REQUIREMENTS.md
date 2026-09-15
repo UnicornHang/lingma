@@ -362,7 +362,8 @@ export const router = createBrowserRouter([
 ```typescript
 // src/stores/
 ├── useAuthStore.ts        // 用户/认证
-├── useWorksStore.ts       // 作品列表、当前作品
+├── useWorksStore.ts       // 作品列表
+├── useCurrentWorkStore.ts // persist 当前作品 id（侧栏设定入口）
 ├── useEditorStore.ts      // 编辑器状态（章节内容、选中、版本）
 ├── useGenerationStore.ts  // 生成任务（任务列表、进度、流式 buffer）
 ├── useSettingsStore.ts    // 全局设置
@@ -636,12 +637,13 @@ Step 1: 选题材      Step 2: 选风格      Step 3: 输入核心     Step 4: A
 | 侧栏「伏笔」 | Tab | 读写连续性账本，登记未收/已兑现/断线 |
 | `Ctrl+Shift+A` | 快捷键 | 切换 AI 助手面板 |
 | `Ctrl+K` | 快捷键 | 全局搜索 |
+| AI 续写 | 点击「续写」 | 无 `outline_node_id` 时前端拦截；后端无细纲返回 409 |
 
 ### 6.4 大纲编辑页（`/works/:workId/outline`）
 
 #### 6.4.1 视图模式
 
-- **树视图**：左侧树 + 右侧详情编辑
+- **树视图**：节点行可编辑简介与约束锁（必须发生 / 禁止发生 / 章尾新债）
 - **时间轴视图**：横向卷轴展示进度（V2）
 
 ```

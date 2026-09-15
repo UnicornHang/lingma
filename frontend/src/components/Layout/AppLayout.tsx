@@ -1,4 +1,5 @@
 import { Outlet, Link, useLocation, NavLink } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Input, Tooltip } from 'antd';
 import {
   BookOpen,
@@ -15,28 +16,12 @@ import {
   User,
 } from 'lucide-react';
 
+import { worksApi } from '@/api/works';
+import { useSyncCurrentWork } from '@/hooks/useSyncCurrentWork';
+import { useCurrentWorkStore } from '@/stores/useCurrentWorkStore';
 import { useUIStore } from '@/stores/useUIStore';
+import { formatWordCount } from '@/utils/format';
 import logoHeader from '../../images/logo.png';
-
-// 侧边栏导航分组
-const NAV_GROUPS = [
-  {
-    label: '创作空间',
-    items: [
-      { to: '/works', icon: BookOpen, label: '作品库' },
-      { to: '/works/new', icon: PlusCircle, label: '新建向导' },
-      { to: '/editor', icon: Edit3, label: '章节编辑' },
-    ],
-  },
-  {
-    label: '作品设定',
-    items: [
-      { to: '/outline', icon: GitBranch, label: '大纲架构' },
-      { to: '/characters', icon: Users, label: '角色档案' },
-      { to: '/world', icon: Globe, label: '世界观圣经' },
-    ],
-  },
-];
 
 const BOTTOM_NAV = [
   { to: '/settings', icon: SettingsIcon, label: '系统设置' },
@@ -46,6 +31,27 @@ const BOTTOM_NAV = [
 export function AppLayout() {
   const location = useLocation();
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const currentWorkId = useCurrentWorkStore((s) => s.currentWorkId);
+
+  useSyncCurrentWork();
+
+  const workQuery = useQuery({
+    queryKey: ['work', currentWorkId],
+    queryFn: () => worksApi.get(currentWorkId!),
+    enabled: !!currentWorkId,
+  });
+
+  const currentWork = workQuery.data;
+  const createSpaceItems = [
+    { to: '/works', icon: BookOpen, label: '作品库', end: true },
+    { to: '/works/new', icon: PlusCircle, label: '新建向导', end: false },
+    { to: '/editor', icon: Edit3, label: '章节编辑', end: false },
+  ];
+  const settingItems = [
+    { segment: 'outline' as const, icon: GitBranch, label: '大纲架构' },
+    { segment: 'characters' as const, icon: Users, label: '角色档案' },
+    { segment: 'world' as const, icon: Globe, label: '世界观圣经' },
+  ];
 
   // 面包屑（从 path 推断）
   const breadcrumb = deriveBreadcrumb(location.pathname);
@@ -81,42 +87,73 @@ export function AppLayout() {
             </div>
           </div>
 
-          {/* 当前作品卡 */}
+          {/* 当前作品卡：读 persist 的作品 id，无选择时引导去作品库 */}
           <div className="mx-6 mb-4 p-3 surface-card">
             <div className="flex items-center justify-between mb-1">
               <span className="text-label-sm text-on-surface-variant">当前作品</span>
-              <span className="font-code-sm text-tertiary font-medium">35.2万字</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-headline-sm font-semibold text-primary truncate">
-                剑来·前传
+              <span className="font-code-sm text-tertiary font-medium">
+                {currentWork ? formatWordCount(currentWork.word_count) : '—'}
               </span>
-              <BookOpen size={18} className="text-primary" />
             </div>
+            {currentWork ? (
+              <Link to={`/works/${currentWork.id}`} className="flex items-center justify-between gap-2 min-w-0">
+                <span className="text-headline-sm font-semibold text-primary truncate">
+                  {currentWork.title}
+                </span>
+                <BookOpen size={18} className="text-primary shrink-0" />
+              </Link>
+            ) : (
+              <Link to="/works" className="flex items-center justify-between gap-2">
+                <span className="text-headline-sm font-semibold text-on-surface-variant truncate">
+                  {currentWorkId && workQuery.isError ? '作品不存在' : '请先选择作品'}
+                </span>
+                <BookOpen size={18} className="text-outline shrink-0" />
+              </Link>
+            )}
           </div>
 
           {/* 导航分组 */}
           <nav className="flex flex-col gap-4 px-4 overflow-y-auto flex-1">
-            {NAV_GROUPS.map((group) => (
-              <div key={group.label} className="flex flex-col gap-1">
-                <span className="px-3 text-[10px] uppercase tracking-wider text-outline font-semibold">
-                  {group.label}
-                </span>
-                {group.items.map((item) => (
+            <div className="flex flex-col gap-1">
+              <span className="px-3 text-[10px] uppercase tracking-wider text-outline font-semibold">
+                创作空间
+              </span>
+              {createSpaceItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    `nav-item ${isActive ? 'nav-item-active' : ''}`
+                  }
+                >
+                  <item.icon size={20} />
+                  <span className="text-label-md">{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="px-3 text-[10px] uppercase tracking-wider text-outline font-semibold">
+                作品设定
+              </span>
+              {settingItems.map((item) => {
+                const to = currentWorkId
+                  ? `/works/${currentWorkId}/${item.segment}`
+                  : '/works';
+                return (
                   <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.to === '/works'}
-                    className={({ isActive }) =>
-                      `nav-item ${isActive ? 'nav-item-active' : ''}`
-                    }
+                    key={item.segment}
+                    to={to}
+                    end
+                    title={currentWorkId ? undefined : '请先打开一部作品'}
+                    className={`nav-item ${isSettingNavActive(location.pathname, item.segment) ? 'nav-item-active' : ''}`}
                   >
                     <item.icon size={20} />
                     <span className="text-label-md">{item.label}</span>
                   </NavLink>
-                ))}
-              </div>
-            ))}
+                );
+              })}
+            </div>
           </nav>
         </div>
 
@@ -183,10 +220,13 @@ export function AppLayout() {
                 <span className="text-label-sm text-tertiary">(节省92%)</span>
               </div>
             </Tooltip>
-            <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-outline-variant/50 text-on-surface text-label-md hover:bg-surface-container-high transition-colors">
+            <Link
+              to={currentWorkId ? `/works/${currentWorkId}` : '/works'}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-outline-variant/50 text-on-surface text-label-md hover:bg-surface-container-high transition-colors"
+            >
               <Download size={18} />
               <span>导出</span>
-            </button>
+            </Link>
             <Tooltip title="通知">
               <button className="relative p-1 text-on-surface-variant hover:text-on-surface rounded-lg hover:bg-surface-container-high transition-colors">
                 <Bell size={22} />
@@ -209,6 +249,14 @@ export function AppLayout() {
       </div>
     </div>
   );
+}
+
+/** 仅当路径是 /works/{id}/outline|characters|world 时点亮对应设定项。 */
+function isSettingNavActive(
+  pathname: string,
+  segment: 'outline' | 'characters' | 'world',
+): boolean {
+  return new RegExp(`^/works/(?!new(?:/|$))[^/]+/${segment}(?:/|$)`).test(pathname);
 }
 
 function deriveBreadcrumb(pathname: string): string[] {
