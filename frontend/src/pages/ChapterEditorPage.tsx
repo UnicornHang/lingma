@@ -236,9 +236,8 @@ export default function ChapterEditorPage() {
         continue_from_chars: 1500,
         target_word_count: currentOutlineTarget,
         outline_node_id: outlineNodeId ?? undefined,
-        // [P2] 显式打开自动去味 + 自动 critic 开关(后端默认也是 true,
-        // 前端显式声明以便 TypeScript 编译期可见、后续可一键关闭)
         auto_polish: true,
+        auto_rewrite: false,
         auto_critic: true,
       });
       setTaskId(resp.task_id);
@@ -262,8 +261,8 @@ export default function ChapterEditorPage() {
         // 修复前硬编码 1500 → 用户报告"目标 1500 字但实际 888 字"
         max_tokens: currentOutlineTarget * 2,
         temperature: 0.85,
-        // [P2] 与 chaptersApi.generate 同步:显式打开自动去味 + 自动 critic
         auto_polish: true,
+        auto_rewrite: false,
         auto_critic: true,
         onDelta: (chunk) => editorRef.current?.insertContent(chunk),
       }
@@ -298,11 +297,15 @@ export default function ChapterEditorPage() {
       if (report.rewrite_attempted && report.rewrite_succeeded) {
         const fixed = report.blocking_count - (report.final_blocking ?? 0);
         message.success(
-          `已自动去除 ${fixed} 处 AI 痕迹 (${report.blocking_count}→${report.final_blocking})`
+          `已自动润色 ${fixed} 处痕迹 (不保证再次通过检测器)`
         );
       } else if (report.rewrite_attempted && !report.rewrite_succeeded) {
         message.warning(
-          `自动去味未成功:${report.rewrite_error ?? '未知原因'},可手动润色`
+          `自动润色未成功:${report.rewrite_error ?? '未知原因'}，可手动点「润色」`
+        );
+      } else if (report.blocking_count > 0) {
+        message.warning(
+          `检测到 ${report.blocking_count} 处阻断级痕迹。请用「痕迹检测」查看；「润色」不会保证过检测器`
         );
       }
       // 把 findings 预填到 editorFindings state,用户在 AI 去味 Modal 里可直接看到
@@ -828,9 +831,21 @@ export default function ChapterEditorPage() {
               icon={<Wand2 size={16} />}
               onClick={handleOpenEditor}
               disabled={isStreaming || !plainText.trim()}
-              title="检测 AI 痕迹并去味"
+              title="确定性句式/标点检测，可标阻断，不改写正文"
             >
-              AI 去味
+              痕迹检测
+            </Button>
+            <Button
+              size="small"
+              icon={<Sparkles size={16} />}
+              onClick={() => {
+                setEditorModalOpen(true);
+                void handlePolish();
+              }}
+              disabled={isStreaming || !plainText.trim()}
+              title="模型润色读感，不承诺通过痕迹检测器"
+            >
+              润色
             </Button>
             <Button
               size="small"
@@ -1270,7 +1285,7 @@ export default function ChapterEditorPage() {
         title={
           <Space>
             <Wand2 size={18} className="text-tertiary" />
-            <span>AI 去味</span>
+            <span>痕迹检测 / 润色</span>
             {editorBlockingCount + editorAdvisoryCount > 0 && (
               <Space size={4}>
                 {editorBlockingCount > 0 && (
@@ -1336,7 +1351,7 @@ export default function ChapterEditorPage() {
                   ✓ 未检测到典型 AI 痕迹,正文看起来比较自然。
                 </p>
                 <p className="text-body-xs text-on-surface-variant mt-1">
-                  本检测器覆盖 10 类常见 AI 写作模式(否定翻转/反序对比/否定排比/音量反差/em-dash 密度/章尾总结/微动作复读/套式反应/抽象总结等)。
+                  痕迹检测是确定性规则，可标「阻断」。润色走模型改写读感，不承诺再次通过检测器。
                 </p>
               </div>
             )}

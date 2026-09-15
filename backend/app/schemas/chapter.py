@@ -80,7 +80,11 @@ class GenerateChapterRequest(BaseModel):
     # [提交 C] 自动去味开关:生成完成后跑 AI 痕迹检测,blocking 超阈值自动重写一次
     auto_polish: bool = Field(
         True,
-        description="生成完成后是否自动跑 AI 痕迹检测与去味(默认开)",
+        description="生成完成后是否自动跑确定性 AI 痕迹检测(默认开,不自动改写)",
+    )
+    auto_rewrite: bool = Field(
+        False,
+        description="检测出阻断级痕迹后是否自动调用模型润色;默认关,不承诺过检测器",
     )
     max_blocking_for_rewrite: int = Field(
         0,

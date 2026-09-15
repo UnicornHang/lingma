@@ -33,6 +33,19 @@ from app.schemas.critic import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _stub_tracking_ledger(monkeypatch):
+    """评审测试不连账本库，知情范围走空 payload。"""
+
+    async def _fake_get_or_create(_db, _work_id):
+        return SimpleNamespace(payload={})
+
+    monkeypatch.setattr(
+        "app.agents.critic_agent.tracking_service.get_or_create_tracking",
+        _fake_get_or_create,
+    )
+
+
 # ============== Prompt 模板测试 ==============
 
 
@@ -87,8 +100,24 @@ def test_critic_user_prompt_with_explicit_personas():
     # 只列 2 个 persona
     assert "shuangwen" in user_p
     assert "zhubian" in user_p
-    # 不应包含未请求的 persona
     assert "wenqing" not in user_p.split("【待评正文】")[0]
+
+
+def test_critic_user_prompt_includes_knowledge_brief():
+    work = SimpleNamespace(
+        title="测试作品", genre="fantasy", logline="",
+        style_keywords=[], target_audience=[], notes="",
+    )
+    user_p = build_critic_user_prompt(
+        work=work,
+        chapter_title="第1章",
+        chapter_summary="",
+        content="一段正文",
+        personas=["kaoju"],
+        knowledge_brief="【知情范围】林墨未知：凶手是哥哥",
+    )
+    assert "知情范围" in user_p
+    assert "凶手是哥哥" in user_p
 
 
 # ============== 聚合逻辑测试 ==============

@@ -35,8 +35,10 @@ export interface GenerationClientStartMessage {
   mode?: 'continue' | 'generate';
   continue_from_chars?: number;
   target_word_count?: number;
-  /** [提交 C] 是否启用自动去味(默认 true) */
+  /** 是否启用确定性痕迹检测(默认 true) */
   auto_polish?: boolean;
+  /** 阻断后是否自动润色(默认 false) */
+  auto_rewrite?: boolean;
   /** [提交 C] blocking 阈值 */
   max_blocking_for_rewrite?: number;
   /** [P2] 是否启用自动 critic 评审(默认 true) */
@@ -60,8 +62,10 @@ export interface GenerationStartOpts {
   continue_from_chars?: number;
   /** 本次生成目标字数（覆盖 outline 默认） */
   target_word_count?: number;
-  /** [提交 C] 自动去味开关(默认 true) */
+  /** 确定性痕迹检测(默认 true) */
   auto_polish?: boolean;
+  /** 阻断后是否自动润色(默认 false) */
+  auto_rewrite?: boolean;
   /** [提交 C] blocking 阈值 */
   max_blocking_for_rewrite?: number;
   /** [P2] 自动 critic 评审开关(默认 true) */
@@ -257,6 +261,7 @@ export function useGenerationStream(
       continue_from_chars: opts?.continue_from_chars,
       target_word_count: opts?.target_word_count,
       auto_polish: opts?.auto_polish,
+      auto_rewrite: opts?.auto_rewrite,
       max_blocking_for_rewrite: opts?.max_blocking_for_rewrite,
       auto_critic: opts?.auto_critic,
     };
@@ -294,6 +299,7 @@ export function useGenerationStream(
           continue_from_chars: opts?.continue_from_chars,
           target_word_count: opts?.target_word_count,
           auto_polish: opts?.auto_polish,
+          auto_rewrite: opts?.auto_rewrite,
           max_blocking_for_rewrite: opts?.max_blocking_for_rewrite,
           auto_critic: opts?.auto_critic,
         };

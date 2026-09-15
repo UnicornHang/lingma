@@ -1012,7 +1012,7 @@ response: 202 Accepted
   "ws_url": "ws://localhost:8000/ws/generation/{task_id}",
   "status": "pending"
 }
-# 无章纲 / 卷纲 / 细纲为空 → 409，detail 为中文提示。写完一章后 WS 侧自动 tracking/commit（失败不阻断）。
+# 无章纲 / 卷纲 / 细纲为空 → 409。默认只做痕迹检测；auto_rewrite 才润色。写完自动 tracking/commit。
 
 # POST /chapters/{id}/ai-continue - 续写（异步）
 request:

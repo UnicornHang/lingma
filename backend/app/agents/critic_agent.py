@@ -37,6 +37,8 @@ from app.schemas.critic import (
     PersonaScore,
 )
 from app.services import prompt_template_service
+from app.services.knowledge_scope import format_knowledge_brief, scan_knowledge_leaks
+from app.services import tracking_service
 from app.services.prompt_template_service import build_personas_block
 from app.services.llm_service import (
     LLMError,
@@ -118,6 +120,15 @@ class CriticAgent(BaseAgent):
             )
             return _empty_evaluation(chapter_id=chapter_id), "mock"
 
+        knowledge_brief = ""
+        knowledge_issues: list[str] = []
+        try:
+            ledger = await tracking_service.get_or_create_tracking(db, work_id)
+            knowledge_brief = format_knowledge_brief(ledger.payload)
+            knowledge_issues = scan_knowledge_leaks(resolved_content, ledger.payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("CriticAgent 知情范围加载失败: %s", exc)
+
         # 3) 规范化 personas
         target_personas = list(personas) if personas else list(ALL_PERSONAS)
 
@@ -142,6 +153,7 @@ class CriticAgent(BaseAgent):
             content=resolved_content,
             personas=target_personas,
             extra_hint=extra_hint,
+            knowledge_brief=knowledge_brief,
         )
 
         # 6) 调用 LLM(非流式 JSON)
@@ -219,9 +231,12 @@ class CriticAgent(BaseAgent):
                 logger.warning("CriticAgent 第 %d 条校验失败: %s; raw=%r", i, e, item)
                 continue
 
-        # 9) Python 端聚合:平均 + 共识 issues
+        # 9) Python 端聚合:平均 + 共识 issues；启发式知情越界并入
         aggregated = _aggregate_scores(persona_scores)
-        consensus_issues = _extract_consensus_issues(persona_scores)
+        consensus_issues = _merge_knowledge_issues(
+            knowledge_issues, _extract_consensus_issues(persona_scores)
+        )
+        _attach_kaoju_knowledge_issues(persona_scores, knowledge_issues)
 
         evaluation = CriticEvaluation(
             chapter_id=chapter_id,
@@ -284,6 +299,39 @@ def _extract_consensus_issues(
             counter[(issue.strip(),)] += 1
     consensus = [item[0] for item, count in counter.most_common() if count >= threshold]
     return consensus[:max_issues]
+
+
+def _merge_knowledge_issues(knowledge_issues: list[str], consensus: list[str]) -> list[str]:
+    """启发式知情越界排在共识问题前面，最多 10 条。"""
+    seen: set[str] = set()
+    merged: list[str] = []
+    for item in [*knowledge_issues, *consensus]:
+        text = item.strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        merged.append(text)
+        if len(merged) >= 10:
+            break
+    return merged
+
+
+def _attach_kaoju_knowledge_issues(
+    persona_scores: list[PersonaScore],
+    knowledge_issues: list[str],
+) -> None:
+    """把知情越界挂到考据党 top_issues，便于 UI 按 persona 展示。"""
+    if not knowledge_issues:
+        return
+    for ps in persona_scores:
+        if ps.persona != "kaoju":
+            continue
+        for issue in knowledge_issues:
+            if issue in ps.top_issues:
+                continue
+            if len(ps.top_issues) >= 5:
+                break
+            ps.top_issues.append(issue)
 
 
 def _empty_evaluation(

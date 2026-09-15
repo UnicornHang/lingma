@@ -68,6 +68,8 @@ export interface TrackingCommitPayload {
     goal?: string;
     known_facts_add?: string[];
     unknown_facts_add?: string[];
+    known_facts?: string[];
+    unknown_facts?: string[];
     open_threads?: string[];
   }>;
   author_events?: string[];

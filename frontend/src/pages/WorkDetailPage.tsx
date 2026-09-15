@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Dropdown, Empty, Spin, App as AntApp, Button } from 'antd';
 import type { MenuProps } from 'antd';
 import {
@@ -14,8 +14,9 @@ import {
   Download,
 } from 'lucide-react';
 
-import { worksApi, chaptersApi, checkHealth, type Work, type Chapter } from '@/api';
+import { worksApi, chaptersApi, outlineApi, checkHealth, type Work, type Chapter } from '@/api';
 import { ExportWorkModal } from '@/components/Export/ExportWorkModal';
+import { findFirstChapterNode } from '@/utils/outline';
 
 interface ChapterSummary {
   id: string;
@@ -28,7 +29,7 @@ interface ChapterSummary {
 export default function WorkDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { message } = AntApp.useApp();
-  // [P3.4] 导出 modal 开关
+  const navigate = useNavigate();
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const workQuery = useQuery({
@@ -41,6 +42,30 @@ export default function WorkDetailPage() {
     queryKey: ['work-chapters', id],
     queryFn: () => chaptersApi.listByWork(id!, { page: 1, page_size: 50 }),
     enabled: !!id,
+  });
+
+  const writeFirstMutation = useMutation({
+    mutationFn: async () => {
+      const tree = await outlineApi.tree(id!);
+      const firstNode = findFirstChapterNode(tree.nodes ?? []);
+      if (!firstNode) {
+        throw new Error('请先在大纲中创建章纲');
+      }
+      const listed = await chaptersApi.listByWork(id!, { page: 1, page_size: 50 });
+      const existing = listed.items.find((c) => c.outline_node_id === firstNode.id);
+      if (existing) return existing;
+      return chaptersApi.create({
+        work_id: id!,
+        title: firstNode.title,
+        outline_node_id: firstNode.id,
+        summary: firstNode.summary,
+      });
+    },
+    onSuccess: (chapter) => navigate(`/editor/${chapter.id}`),
+    onError: (err: unknown) => {
+      message.warning(err instanceof Error ? err.message : '无法创建第一章');
+      navigate(`/works/${id}/outline`);
+    },
   });
 
   // 健康检查副作用（首次进入时显示一次连接状态）
@@ -125,22 +150,36 @@ export default function WorkDetailPage() {
               {work.logline || '（暂无简介）'}
             </p>
             <div className="flex items-center gap-3 mt-2 flex-wrap">
-              <Link to={firstChapterId ? `/editor/${firstChapterId}` : '/editor'}>
-                <Button
-                  type="default"
-                  size="large"
-                  icon={<FileText size={18} />}
-                  disabled={!firstChapterId}
-                  style={{
-                    background: 'white',
-                    color: '#047857',
-                    borderColor: 'white',
-                    fontWeight: 600,
-                  }}
-                >
-                  打开编辑器
-                </Button>
-              </Link>
+              <Button
+                type="default"
+                size="large"
+                icon={<FileText size={18} />}
+                disabled={!firstChapterId}
+                onClick={() => firstChapterId && navigate(`/editor/${firstChapterId}`)}
+                style={{
+                  background: firstChapterId ? 'white' : undefined,
+                  color: firstChapterId ? '#047857' : undefined,
+                  borderColor: 'white',
+                  fontWeight: 600,
+                }}
+              >
+                打开编辑器
+              </Button>
+              <Button
+                type="default"
+                size="large"
+                icon={<FileText size={18} />}
+                loading={writeFirstMutation.isPending}
+                onClick={() => writeFirstMutation.mutate()}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  color: 'white',
+                  borderColor: 'rgba(255,255,255,0.3)',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                写第 1 章
+              </Button>
               <Link to={`/works/${id}/outline`}>
                 <Button
                   type="default"

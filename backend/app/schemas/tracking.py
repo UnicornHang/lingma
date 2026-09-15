@@ -62,6 +62,8 @@ class CharacterStateUpdate(BaseModel):
     goal: str | None = None
     known_facts_add: list[str] = Field(default_factory=list, max_length=20)
     unknown_facts_add: list[str] = Field(default_factory=list, max_length=20)
+    known_facts: list[str] | None = Field(None, max_length=40)
+    unknown_facts: list[str] | None = Field(None, max_length=40)
     open_threads: list[str] | None = None
 
 

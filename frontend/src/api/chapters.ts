@@ -67,8 +67,10 @@ export interface GenerateChapterRequest {
   mode?: GenerateMode;
   /** 续写模式下取章节末尾最近 N 字作为 prompt 上下文（默认 1500） */
   continue_from_chars?: number;
-  /** [提交 C] 生成完成后是否自动跑 AI 痕迹检测与去味（默认开） */
+  /** 生成完成后是否自动跑确定性痕迹检测（默认开） */
   auto_polish?: boolean;
+  /** 阻断级痕迹后是否自动润色（默认关，不承诺过检测器） */
+  auto_rewrite?: boolean;
   /** [提交 C] blocking finding 阈值,达到/超过即触发自动重写;默认 0 */
   max_blocking_for_rewrite?: number;
   /** [P2] 生成完成后是否自动跑 CriticAgent 多 Persona 评审(默认开) */

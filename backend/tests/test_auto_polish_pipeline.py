@@ -59,7 +59,7 @@ async def test_blocking_triggers_rewrite():
     # 故意构造一个含 not-is-reverse 的句子,确保命中至少 1 条 blocking
     dirty = "他咬牙冲上前,是愤怒,不是恐惧。刀光剑影中,血溅当场。"
     text, report = await _auto_polish_if_needed(
-        dirty, cfg=None, style_keywords=["热血"]
+        dirty, cfg=None, style_keywords=["热血"], auto_rewrite=True
     )
     assert report is not None
     assert report["blocking_count"] >= 1
@@ -74,7 +74,7 @@ async def test_blocking_final_blocking_recorded():
     """改写后再跑检测,final_blocking 应被记录"""
     dirty = "他咬牙冲上前,是愤怒,不是恐惧。刀光剑影中,血溅当场。"
     text, report = await _auto_polish_if_needed(
-        dirty, cfg=None, style_keywords=None
+        dirty, cfg=None, style_keywords=None, auto_rewrite=True
     )
     assert report["final_blocking"] is not None
     # 是整数
@@ -97,7 +97,7 @@ async def test_llm_failure_keeps_original():
     with patch.object(generation, "get_llm_service", return_value=fake_llm):
         dirty = "他咬牙冲上前,是愤怒,不是恐惧。"
         text, report = await _auto_polish_if_needed(
-            dirty, cfg=None, style_keywords=None
+            dirty, cfg=None, style_keywords=None, auto_rewrite=True
         )
     assert text == dirty  # 原文未变
     assert report is not None
@@ -128,7 +128,7 @@ async def test_llm_output_too_short_keeps_original():
     with patch.object(generation, "get_llm_service", return_value=fake_llm):
         dirty = "他咬牙冲上前,是愤怒,不是恐惧。"
         text, report = await _auto_polish_if_needed(
-            dirty, cfg=None, style_keywords=None
+            dirty, cfg=None, style_keywords=None, auto_rewrite=True
         )
     assert text == dirty
     assert report["rewrite_attempted"] is True
@@ -154,6 +154,17 @@ async def test_only_advisory_no_rewrite():
     )
     # 不管有没有 advisory,blocking_count 应为 0 → 不触发
     assert report["blocking_count"] == 0
+    assert report["rewrite_attempted"] is False
+
+
+@pytest.mark.asyncio
+async def test_blocking_without_auto_rewrite_only_lints():
+    """默认不自动润色：有 blocking 也只出检测报告。"""
+    dirty = "他咬牙冲上前,是愤怒,不是恐惧。刀光剑影中,血溅当场。"
+    text, report = await _auto_polish_if_needed(dirty, cfg=None, style_keywords=None)
+    assert text == dirty
+    assert report is not None
+    assert report["blocking_count"] >= 1
     assert report["rewrite_attempted"] is False
 
 
@@ -198,9 +209,10 @@ def test_generate_chapter_request_accepts_auto_polish():
 
 
 def test_generate_chapter_request_defaults_are_permissive():
-    """默认值: auto_polish=True, max_blocking_for_rewrite=0"""
+    """默认:检测开、自动润色关。"""
     from app.schemas.chapter import GenerateChapterRequest
 
     req = GenerateChapterRequest()
     assert req.auto_polish is True
+    assert req.auto_rewrite is False
     assert req.max_blocking_for_rewrite == 0

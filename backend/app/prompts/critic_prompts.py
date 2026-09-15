@@ -36,9 +36,10 @@ _PERSONA_INSTRUCTIONS: dict[str, str] = {
         "判断标准:是否有让人想摘抄的金句?是否有画面感?是否有余韵?"
     ),
     "kaoju": (
-        "考据党:你只在意设定自洽、人物言行一致性、力量体系无 bug、世界规则连贯。"
+        "考据党:你只在意设定自洽、人物言行一致性、力量体系无 bug、世界规则连贯、知情范围。"
         "对文笔、爽感、节奏次要宽容。"
         "判断标准:本章出现的所有设定/规则/人物性格是否与前文矛盾?是否有物理/逻辑硬伤?"
+        "角色不得说出账本里标记为未知的事实,也不得提前知道作者真相。"
     ),
     "mengxin": (
         "萌新读者(路人视角):你只看 500 字内能否入戏,后续读起来是否顺畅,是否有钩子。"
@@ -108,6 +109,7 @@ def build_critic_user_prompt(
     content: str,
     personas: Iterable[str],
     extra_hint: str | None = None,
+    knowledge_brief: str | None = None,
     content_max_chars: int = 6000,
 ) -> str:
     """构造 Critic 的 user prompt。
@@ -133,6 +135,11 @@ def build_critic_user_prompt(
         if extra_hint and extra_hint.strip()
         else ""
     )
+    knowledge_text = (
+        f"\n{knowledge_brief.strip()}\n"
+        if knowledge_brief and knowledge_brief.strip()
+        else ""
+    )
 
     return dedent(
         f"""\
@@ -144,7 +151,7 @@ def build_critic_user_prompt(
 
         【待评章节】{chapter_title}
         【章节摘要】{chapter_summary or _EMPTY}
-
+        {knowledge_text}
         【本次 Persona 列表】{persona_names}
         {extra_text}
         【待评正文(共 {len(content)} 字)】

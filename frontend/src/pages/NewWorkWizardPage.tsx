@@ -209,7 +209,7 @@ export default function NewWorkWizardPage() {
       } else {
         message.success(`作品《${created.title}》创建成功`);
       }
-      navigate(`/works/${created.id}`);
+      navigate(`/works/${created.id}/outline`);
       setCurrentWorkId(created.id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '创建失败';
@@ -478,10 +478,10 @@ export default function NewWorkWizardPage() {
             <Sparkles size={18} className="text-tertiary" />
             <span className="text-body-sm text-on-surface-variant">
               {step < 2
-                ? '下一步可让 Writer Agent 自动生成作品世界观草案'
+                ? '下一步补世界观与受众；创建后停在细纲，不会自动写正文'
                 : step === 3
-                  ? 'AI 推荐的大纲可勾选后,在创建作品时一并写入'
-                  : '点击「创建」后将立即初始化数据库与向量库'}
+                  ? '勾选的大纲会在创建时写入；不会调用 Writer 写第 1 章'
+                  : '创建后进入大纲页。点「写第 1 章」才会进编辑器'}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -791,7 +791,8 @@ function StepReview({
       </div>
       <div className="px-3 py-2 rounded-lg bg-tertiary-container/20 text-body-sm text-on-surface-variant">
         <Info size={18} className="align-middle text-tertiary inline" />{' '}
-        创建后会在 <code>data/works/&lt;work_id&gt;/</code> 下初始化 SQLite + Chroma 子库。
+        创建后停在细纲，不会自动写正文。作品库位于{' '}
+        <code>data/works/&lt;work_id&gt;/</code>。
       </div>
     </div>
   );

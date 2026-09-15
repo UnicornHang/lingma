@@ -132,8 +132,16 @@ def apply_commit(payload: dict[str, Any], commit: dict[str, Any]) -> dict[str, A
             slot["location"] = upd["location"]
         if upd.get("goal") is not None:
             slot["goal"] = upd["goal"]
-        _extend_unique(slot["known_facts"], upd.get("known_facts_add") or [])
-        _extend_unique(slot["unknown_facts"], upd.get("unknown_facts_add") or [])
+        if upd.get("known_facts") is not None:
+            slot["known_facts"] = []
+            _extend_unique(slot["known_facts"], upd.get("known_facts") or [])
+        else:
+            _extend_unique(slot["known_facts"], upd.get("known_facts_add") or [])
+        if upd.get("unknown_facts") is not None:
+            slot["unknown_facts"] = []
+            _extend_unique(slot["unknown_facts"], upd.get("unknown_facts") or [])
+        else:
+            _extend_unique(slot["unknown_facts"], upd.get("unknown_facts_add") or [])
         if upd.get("open_threads") is not None:
             slot["open_threads"] = list(upd["open_threads"])
 

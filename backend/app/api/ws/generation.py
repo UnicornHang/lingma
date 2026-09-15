@@ -205,8 +205,9 @@ async def _handle_start(
                 task.error = gate_err.message
                 await db.commit()
                 return
-        # [提交 C] 自动去味开关(默认开)
+        # [提交 C] 痕迹检测默认开；模型润色默认关（不承诺过检测器）
         auto_polish = bool(params.get("auto_polish", True))
+        auto_rewrite = bool(params.get("auto_rewrite", False))
         max_blocking_for_rewrite = int(params.get("max_blocking_for_rewrite", 0))
         # [P2] 自动 critic 评审开关(默认开)
         auto_critic = bool(params.get("auto_critic", True))
@@ -389,6 +390,7 @@ async def _handle_start(
             cfg=cfg,
             style_keywords=work_style_keywords,
             max_blocking_for_rewrite=max_blocking_for_rewrite,
+            auto_rewrite=auto_rewrite,
         )
         # 把去味结果同步回 full_content,确保落库与前端一致
         full_content = cleaned_full
@@ -588,18 +590,12 @@ async def _auto_polish_if_needed(
     *,
     style_keywords: list[str] | None,
     max_blocking_for_rewrite: int = 0,
+    auto_rewrite: bool = False,
 ) -> tuple[str, dict | None]:
-    """生成完成后:跑 AI 痕迹检测,blocking 超阈值就调 LLM 整章重写一次。
+    """生成完成后跑确定性痕迹检测；仅当 auto_rewrite 且 blocking 超阈值才润色。
 
     返回: (final_text, report)。report=None 表示跳过(auto_polish 关闭或空文本)。
-
-    报告字段:
-    - blocking_count / advisory_count: 改写前
-    - rewrite_attempted / rewrite_succeeded: bool
-    - rewrite_error: str | None
-    - final_blocking: 改写后剩余 blocking 数(None 表示未再检测)
-    - pre_findings: list[dict] —— 改写前 findings 摘要(至多 5 条)
-    - elapsed_ms: int
+    润色不保证再次通过检测器。
     """
     if not text or not text.strip():
         return text, None
@@ -623,7 +619,7 @@ async def _auto_polish_if_needed(
     }
 
     # 无 blocking → 不触发重写
-    if blocking_count <= max_blocking_for_rewrite:
+    if blocking_count <= max_blocking_for_rewrite or not auto_rewrite:
         base_report["elapsed_ms"] = int(time.time() * 1000) - start_ms
         return text, base_report
 

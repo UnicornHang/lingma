@@ -63,6 +63,35 @@ def test_merge_constraints_outline_wins():
     assert merged["word_count_min"] == 2000
 
 
+def test_apply_commit_replaces_character_facts():
+    """编辑运行时状态时用全量列表覆盖已知/未知。"""
+        empty_payload(),
+        {
+            "chapter_id": "c1",
+            "character_updates": [
+                {
+                    "character_id": "a",
+                    "name": "甲",
+                    "location": "京城",
+                    "known_facts": ["收到信"],
+                    "unknown_facts": ["信是哥哥寄的"],
+                }
+            ],
+        },
+    )
+    assert state["characters"]["a"]["known_facts"] == ["收到信"]
+    state = apply_commit(
+        state,
+        {
+            "character_updates": [
+                {"character_id": "a", "known_facts": ["信已拆开"], "unknown_facts": []}
+            ]
+        },
+    )
+    assert state["characters"]["a"]["known_facts"] == ["信已拆开"]
+    assert state["characters"]["a"]["unknown_facts"] == []
+
+
 def test_context_card_only_loads_appearing_characters():
     """写前只带出场角色状态。"""
     payload = empty_payload()

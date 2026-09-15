@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { App, Spin, Empty, Modal, Form, Input, Select, InputNumber, Button } from 'antd';
 import {
@@ -12,9 +12,10 @@ import {
   Network,
   FileText,
   Pencil,
+  PenLine,
 } from 'lucide-react';
 
-import { outlineApi, type OutlineTreeNode, type OutlineNodeCreate, type OutlineNodeUpdate } from '@/api';
+import { outlineApi, chaptersApi, type OutlineTreeNode, type OutlineNodeCreate, type OutlineNodeUpdate } from '@/api';
 
 /** 把多行文本拆成约束列表。 */
 function splitLines(value: unknown): string[] {
@@ -28,6 +29,7 @@ function splitLines(value: unknown): string[] {
 export default function OutlinePage() {
   const { id: workId } = useParams<{ id: string }>();
   const { message } = App.useApp();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [modalOpen, setModalOpen] = useState(false);
@@ -77,6 +79,24 @@ export default function OutlinePage() {
     },
     onError: (err: unknown) => {
       message.error(err instanceof Error ? err.message : '删除失败');
+    },
+  });
+
+  const writeChapterMutation = useMutation({
+    mutationFn: async (node: OutlineTreeNode) => {
+      const listed = await chaptersApi.listByWork(workId!, { page: 1, page_size: 200 });
+      const existing = listed.items.find((c) => c.outline_node_id === node.id);
+      if (existing) return existing;
+      return chaptersApi.create({
+        work_id: workId!,
+        title: node.title,
+        outline_node_id: node.id,
+        summary: node.summary,
+      });
+    },
+    onSuccess: (chapter) => navigate(`/editor/${chapter.id}`),
+    onError: (err: unknown) => {
+      message.error(err instanceof Error ? err.message : '无法打开章节');
     },
   });
 
@@ -208,6 +228,7 @@ export default function OutlinePage() {
                 onToggle={toggle}
                 onAddChild={(parent) => openCreate(parent)}
                 onEdit={openEdit}
+                onWriteChapter={(node) => writeChapterMutation.mutate(node)}
                 onDelete={(nid) => {
                   Modal.confirm({
                     title: '确认删除该节点？',
@@ -283,6 +304,7 @@ function OutlineRow({
   onToggle,
   onAddChild,
   onEdit,
+  onWriteChapter,
   onDelete,
   workId,
 }: {
@@ -292,6 +314,7 @@ function OutlineRow({
   onToggle: (id: string) => void;
   onAddChild: (parent: OutlineTreeNode) => void;
   onEdit: (node: OutlineTreeNode) => void;
+  onWriteChapter: (node: OutlineTreeNode) => void;
   onDelete: (id: string) => void;
   workId: string;
 }) {
@@ -319,6 +342,16 @@ function OutlineRow({
           目标 {node.target_word_count.toLocaleString()} 字
         </span>
         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+          {node.type === 'chapter' && (
+            <Button
+              type="text"
+              shape="circle"
+              size="small"
+              onClick={() => onWriteChapter(node)}
+              icon={<PenLine size={14} />}
+              title="写本章（不自动生成正文）"
+            />
+          )}
           <Button
             type="text"
             shape="circle"
@@ -357,6 +390,7 @@ function OutlineRow({
               onToggle={onToggle}
               onAddChild={onAddChild}
               onEdit={onEdit}
+              onWriteChapter={onWriteChapter}
               onDelete={onDelete}
               workId={workId}
             />
