@@ -50,6 +50,7 @@ export function AppRouter() {
           <Route path="/settings" element={<Navigate to="/settings/general" replace />} />
           <Route path="/settings/general"    element={<SettingsPage />} />
           <Route path="/settings/llm"        element={<SettingsPage />} />
+          <Route path="/settings/prompts"    element={<SettingsPage />} />
           <Route path="/settings/writing"    element={<SettingsPage />} />
           <Route path="/settings/appearance" element={<SettingsPage />} />
           <Route path="/settings/backup"     element={<SettingsPage />} />

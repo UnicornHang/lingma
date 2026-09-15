@@ -218,6 +218,7 @@ function deriveBreadcrumb(pathname: string): string[] {
     'settings/appearance': '系统设置',
     'settings/backup': '系统设置',
     'settings/llm': '系统设置',
+    'settings/prompts': '系统设置',
     'settings/about': '系统设置',
     'help': '使用文档',
   };

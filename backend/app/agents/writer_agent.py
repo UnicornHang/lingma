@@ -36,6 +36,7 @@ from app.models.work import Work
 from app.models.world import WorldBible
 from app.prompts.writer_prompts import build_system_prompt, build_user_prompt
 from app.schemas.rag import RagHit
+from app.services import prompt_template_service
 from app.services.chapter_role_resolver import (
     ChapterRole,
     ReferenceHints,
@@ -122,7 +123,12 @@ class WriterAgent(BaseAgent):
         )
 
         # ===== 构建消息 =====
-        system = build_system_prompt(target_words)
+        system = await prompt_template_service.resolve_system_prompt(
+            db,
+            "writer",
+            variables={"target_words": str(target_words)},
+            fallback=build_system_prompt(target_words),
+        )
         user = build_user_prompt(
             work=work,
             chapter=chapter,
@@ -228,7 +234,12 @@ class WriterAgent(BaseAgent):
             hints=hints,
         )
 
-        system = build_system_prompt(effective_target)
+        system = await prompt_template_service.resolve_system_prompt(
+            db,
+            "writer",
+            variables={"target_words": str(effective_target)},
+            fallback=build_system_prompt(effective_target),
+        )
         user = build_user_prompt(
             work=work,
             chapter=chapter,

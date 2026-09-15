@@ -27,6 +27,7 @@ _NONE_DESC = "（无）"
 
 
 def build_system_prompt(target_words: int) -> str:
+    """构造 Writer system prompt;target_words 写入字数约束。"""
     return dedent(
         f"""\
         你是一位资深网络小说作家，擅长中长篇创作。请遵循以下原则：
@@ -45,6 +46,10 @@ def build_system_prompt(target_words: int) -> str:
         10. 直接开始第一句正文 —— 不要"Listo:"、"好的我开始写"、"Chapter X:" 之类的过渡句。
         """
     ).strip()
+
+
+# 可编辑模板默认值(占位符版) —— Prompt 设置页与 resolve 共用
+WRITER_SYSTEM_TEMPLATE = build_system_prompt(99999).replace("99999", "{{target_words}}")
 
 
 # 向后兼容旧 import

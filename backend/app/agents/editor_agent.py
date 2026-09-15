@@ -19,6 +19,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.agents.base import BaseAgent
 from app.prompts.editor_prompts import (
     build_editor_system_prompt,
@@ -30,6 +32,7 @@ from app.services.ai_pattern_detector import (
     Severity,
     summarize as summarize_findings,
 )
+from app.services import prompt_template_service
 from app.services.llm_service import (
     LLMError,
     LLMMessage,
@@ -183,6 +186,7 @@ class EditorAgent(BaseAgent):
         style_keywords: list[str] | None = None,
         temperature: float = 0.6,
         max_tokens: int = 4096,
+        db: AsyncSession | None = None,
     ) -> PolishResult:
         """完整去味流程:detect → LLM 逐条重写 → 应用改写到原文。
 
@@ -201,7 +205,11 @@ class EditorAgent(BaseAgent):
                 stats=summarize_findings([]),
             )
 
-        system = build_editor_system_prompt()
+        system = await prompt_template_service.resolve_system_prompt(
+            db,
+            "editor",
+            fallback=build_editor_system_prompt(),
+        )
         user = build_editor_user_prompt(
             chapter_text=text,
             findings=findings,

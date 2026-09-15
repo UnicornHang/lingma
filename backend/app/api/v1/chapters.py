@@ -19,6 +19,7 @@ from app.prompts.editor_prompts import (
     build_editor_system_prompt,
     build_editor_user_prompt,
 )
+from app.services import prompt_template_service
 from app.models.chapter import ChapterVersion
 from app.models.task import GenerationTask, TaskStatus, TaskType
 from app.schemas.chapter import (
@@ -280,6 +281,7 @@ async def polish_chapter_endpoint(
         style_keywords=payload.style_keywords,
         temperature=payload.temperature,
         max_tokens=payload.max_tokens,
+        db=db,
     )
     return PolishChapterResponse(
         findings=[PatternFindingRead(**f.to_dict()) for f in result.findings],
@@ -369,7 +371,11 @@ async def polish_chapter_stream_endpoint(
         # ===== 阶段 2:流式 LLM 改写 =====
         yield _sse("llm_started", {"model": cfg.model if cfg else "mock"})
 
-        system = build_editor_system_prompt()
+        system = await prompt_template_service.resolve_system_prompt(
+            db,
+            "editor",
+            fallback=build_editor_system_prompt(),
+        )
         user = build_editor_user_prompt(
             chapter_text=text,
             findings=findings,

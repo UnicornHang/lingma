@@ -18,6 +18,7 @@ from app.agents.base import BaseAgent
 from app.agents.character_agent import _extract_json_object  # 复用 JSON 抽取逻辑
 from app.models.work import Work
 from app.prompts.plot_prompts import build_plot_system_prompt, build_plot_user_prompt
+from app.services import prompt_template_service
 from app.schemas.outline import PlotOutlineResponse
 from app.services.llm_service import (
     LLMError,
@@ -101,7 +102,11 @@ class PlotAgent(BaseAgent):
         model_name = cfg.model if cfg else "mock"
 
         # 4) 构造 prompt
-        system_msg = build_plot_system_prompt()
+        system_msg = await prompt_template_service.resolve_system_prompt(
+            db,
+            "plot",
+            fallback=build_plot_system_prompt(),
+        )
         user_msg = build_plot_user_prompt(
             work=resolved_work,
             total_volumes=total_volumes,

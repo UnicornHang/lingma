@@ -40,6 +40,7 @@ async def init_db() -> None:
         character,
         critic_evaluation,  # [P2]
         outline,
+        prompt_template,  # [P4]
         setting,
         task,
         world,

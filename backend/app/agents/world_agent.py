@@ -20,6 +20,7 @@ from app.agents.character_agent import _extract_json_object
 from app.models.work import Work
 from app.models.world import WorldBible
 from app.prompts.world_prompts import build_world_system_prompt, build_world_user_prompt
+from app.services import prompt_template_service
 from app.schemas.world import WorldBibleSuggestion
 from app.services.llm_service import (
     LLMError,
@@ -81,7 +82,11 @@ class WorldAgent(BaseAgent):
         existing_world = await _load_existing_world(db, work_id)
 
         # 3) 构造 prompt
-        system_msg = build_world_system_prompt()
+        system_msg = await prompt_template_service.resolve_system_prompt(
+            db,
+            "world",
+            fallback=build_world_system_prompt(),
+        )
         user_msg = build_world_user_prompt(
             work=work,
             existing_world=existing_world,

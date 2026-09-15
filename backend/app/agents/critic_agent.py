@@ -36,6 +36,8 @@ from app.schemas.critic import (
     CriticPersona,
     PersonaScore,
 )
+from app.services import prompt_template_service
+from app.services.prompt_template_service import build_personas_block
 from app.services.llm_service import (
     LLMError,
     LLMMessage,
@@ -124,7 +126,15 @@ class CriticAgent(BaseAgent):
         model_name = cfg.model if cfg else "mock"
 
         # 5) 构造 prompt
-        system_msg = build_critic_system_prompt(target_personas)
+        system_msg = await prompt_template_service.resolve_system_prompt(
+            db,
+            "critic",
+            variables={
+                "persona_count": str(len(target_personas)),
+                "personas_block": build_personas_block(target_personas),
+            },
+            fallback=build_critic_system_prompt(target_personas),
+        )
         user_msg = build_critic_user_prompt(
             work=work,
             chapter_title=chapter_title,

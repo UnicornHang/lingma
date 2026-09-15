@@ -23,6 +23,7 @@ from app.prompts.character_prompts import (
     build_character_user_prompt,
 )
 from app.schemas.character import CharacterCard
+from app.services import prompt_template_service
 from app.services.llm_service import (
     LLMError,
     LLMMessage,
@@ -127,7 +128,11 @@ class CharacterAgent(BaseAgent):
         existing = await _load_existing_characters(db, work_id)
 
         # 3) 构造 prompt
-        system_msg = build_character_system_prompt()
+        system_msg = await prompt_template_service.resolve_system_prompt(
+            db,
+            "character",
+            fallback=build_character_system_prompt(),
+        )
         user_msg = build_character_user_prompt(
             work=work,
             existing_characters=existing,

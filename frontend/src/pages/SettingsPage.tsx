@@ -23,6 +23,7 @@ import {
   Sliders,
   Network,
   FileText,
+  FileCode2,
   Palette,
   Database,
   Info,
@@ -53,10 +54,12 @@ import {
   type StylePresetCreate,
 } from '@/api';
 import { BackupSettings } from '@/components/Settings/BackupSettings';
+import { PromptSettings } from '@/components/Settings/PromptSettings';
 
 const SUBNAV = [
   { to: '/settings/general', icon: Sliders, label: '常规设置' },
   { to: '/settings/llm', icon: Network, label: 'LLM API 配置', accent: true },
+  { to: '/settings/prompts', icon: FileCode2, label: 'Prompt 模板' },
   { to: '/settings/writing', icon: FileText, label: '写作偏好' },
   { to: '/settings/appearance', icon: Palette, label: '外观主题' },
   { to: '/settings/backup', icon: Database, label: '数据与备份' },
@@ -1216,6 +1219,7 @@ export default function SettingsPage() {
 
 function renderContent(pathname: string) {
   if (pathname.startsWith('/settings/llm')) return <LLMSettings />;
+  if (pathname.startsWith('/settings/prompts')) return <PromptSettings />;
   if (pathname.startsWith('/settings/writing')) return <WritingSettings />;
   if (pathname.startsWith('/settings/appearance')) return <AppearanceSettings />;
   if (pathname.startsWith('/settings/backup')) return <BackupSettings />;

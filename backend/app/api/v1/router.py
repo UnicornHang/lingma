@@ -7,6 +7,7 @@ from app.api.v1 import (
     characters,
     critic,
     outline,
+    prompts,
     rag,
     settings,
     tasks,
@@ -28,4 +29,7 @@ api_router.include_router(tasks.router, tags=["任务"])
 api_router.include_router(settings.router, prefix="/settings", tags=["设置"])
 api_router.include_router(
     backup.router, prefix="/settings/backup", tags=["备份"]
+)
+api_router.include_router(
+    prompts.router, prefix="/settings/prompts", tags=["Prompt 模板"]
 )
