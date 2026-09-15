@@ -30,6 +30,7 @@ import {
   type CriticSummary,
 } from '@/api/chapters';
 import { CriticTrendChart } from '@/components/Charts/CriticTrendChart';
+import { WorldConsistencyPanel } from '@/components/World/WorldConsistencyPanel';
 import { outlineApi, type OutlineTreeNode } from '@/api/outline';
 import { useGenerationStream } from '@/hooks/useGenerationStream';
 import { RichEditor, type RichEditorHandle } from '@/components/RichEditor';
@@ -1150,26 +1151,20 @@ export default function ChapterEditorPage() {
           </div>
 
           {/* World bible check */}
-          <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant/40 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="chip-tertiary">一致性 ✓</span>
-              <span className="font-code-sm text-outline">3 项检查</span>
+          {(activeTab === 3) && (
+            <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant/40">
+              {chapter?.work_id ? (
+                <WorldConsistencyPanel
+                  workId={chapter.work_id}
+                  chapterId={chapter.id}
+                  text={plainText}
+                  autoCheck={activeTab === 3}
+                />
+              ) : (
+                <p className="text-body-sm text-on-surface-variant">保存章节后即可检查世界观一致性</p>
+              )}
             </div>
-            <ul className="flex flex-col gap-1 mt-1">
-              <li className="flex items-center gap-2 text-body-sm">
-                <CheckCircle2 size={16} className="text-tertiary" />
-                <span className="text-on-surface">"剑来" 招式名 → 功法卷轴存在</span>
-              </li>
-              <li className="flex items-center gap-2 text-body-sm">
-                <CheckCircle2 size={16} className="text-tertiary" />
-                <span className="text-on-surface">陈平安右臂旧伤 → 第 8 章已埋伏笔</span>
-              </li>
-              <li className="flex items-center gap-2 text-body-sm">
-                <AlertTriangle size={16} className="text-error" />
-                <span className="text-on-surface">来客道袍颜色与第 4 章描述不一致</span>
-              </li>
-            </ul>
-          </div>
+          )}
 
           {/* Foreshadowing */}
           <div className="p-4 rounded-lg bg-surface-container-low border border-outline-variant/40 flex flex-col gap-2">

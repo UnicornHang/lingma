@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.world_agent import WorldAgent
 from app.deps import get_db
 from app.schemas.world import (
+    ConsistencyCheckRequest,
+    ConsistencyCheckResponse,
     WorldBibleCreate,
     WorldBibleRead,
     WorldBibleUpdate,
@@ -84,4 +86,29 @@ async def ai_suggest_world(
         suggestion=suggestion,
         model_used=model_used,
         raw_content=raw,
+    )
+
+
+@router.post(
+    "/works/{work_id}/world/check-consistency",
+    response_model=ConsistencyCheckResponse,
+    summary="对照世界书检查正文一致性",
+)
+async def check_world_consistency_endpoint(
+    work_id: UUID,
+    payload: ConsistencyCheckRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> ConsistencyCheckResponse:
+    """检查待检文本(或章节)是否违反世界书设定。
+
+    - `text`: 直接检查这段文字
+    - `chapter_id`: 读取该章节 plain_content(须属于本作品)
+    - 两者都空: 用世界书 raw_text 做内部自检
+    """
+    body = payload or ConsistencyCheckRequest()
+    return await world_service.check_consistency(
+        db,
+        work_id,
+        text=body.text,
+        chapter_id=body.chapter_id,
     )

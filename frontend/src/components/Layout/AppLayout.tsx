@@ -13,10 +13,10 @@ import {
   Download,
   Bell,
   User,
-  Sparkles,
 } from 'lucide-react';
 
 import { useUIStore } from '@/stores/useUIStore';
+import logoHeader from '../../images/logo.png';
 
 // 侧边栏导航分组
 const NAV_GROUPS = [
@@ -60,8 +60,16 @@ export function AppLayout() {
         <div className="flex flex-col flex-1 min-h-0">
           {/* Logo */}
           <div className="px-6 py-6 flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-sm">
-              <Sparkles size={22} className="text-white" />
+            <div className="relative w-10 h-10 shrink-0">
+              {/* 主色光晕，与启动页 Logo 处理一致 */}
+              {/* <div className="absolute -inset-1 rounded-xl bg-primary/30 blur-md" /> */}
+              <div className="relative w-10 h-10 rounded-lg bg-[#ecfdf5] flex items-center justify-center overflow-hidden">
+                <img
+                  src={logoHeader}
+                  alt="织梦"
+                  className="w-full h-full object-contain"
+                />
+              </div>
             </div>
             <div className="flex flex-col">
               <span className="text-headline-sm font-semibold tracking-tight text-on-surface">

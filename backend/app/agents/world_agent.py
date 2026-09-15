@@ -19,9 +19,14 @@ from app.agents.base import BaseAgent
 from app.agents.character_agent import _extract_json_object
 from app.models.work import Work
 from app.models.world import WorldBible
-from app.prompts.world_prompts import build_world_system_prompt, build_world_user_prompt
+from app.prompts.world_prompts import (
+    build_consistency_system_prompt,
+    build_consistency_user_prompt,
+    build_world_system_prompt,
+    build_world_user_prompt,
+)
+from app.schemas.world import ConsistencyIssue, WorldBibleSuggestion
 from app.services import prompt_template_service
-from app.schemas.world import WorldBibleSuggestion
 from app.services.llm_service import (
     LLMError,
     LLMMessage,
@@ -29,6 +34,7 @@ from app.services.llm_service import (
     get_llm_service,
     resolve_provider_config,
 )
+from app.services.world_consistency import parse_llm_issues
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +186,63 @@ class WorldAgent(BaseAgent):
              if getattr(suggestion, k)],
         )
         return suggestion, model_name, raw_content
+
+    async def check_consistency(
+        self,
+        db: AsyncSession,
+        *,
+        work_id: UUID,
+        text: str,
+        world_brief: str,
+        chapter_title: str | None = None,
+    ) -> tuple[list[ConsistencyIssue], str, str, str]:
+        """对照世界书审校正文。
+
+        返回: (issues, summary, model_used, raw_content)
+        LLM 失败时返回空列表,由调用方保留启发式结果。
+        """
+        work = await _load_work(db, work_id)
+        title = work.title if work else "未命名作品"
+        system_msg = build_consistency_system_prompt()
+        user_msg = build_consistency_user_prompt(
+            work_title=title,
+            world_brief=world_brief,
+            text=text,
+            chapter_title=chapter_title,
+        )
+        cfg = await resolve_provider_config(db, agent_type=self.agent_type, work_id=work_id)
+        model_name = cfg.model if cfg else "mock"
+        llm = get_llm_service()
+        req = LLMRequest(
+            messages=[
+                LLMMessage(role="system", content=system_msg),
+                LLMMessage(role="user", content=user_msg),
+            ],
+            model=model_name,
+            temperature=0.2,
+            max_tokens=2048,
+            stream=False,
+        )
+        raw_content = ""
+        try:
+            resp = await llm.chat(req, cfg)
+            raw_content = resp.content or ""
+        except LLMError as e:
+            logger.warning("WorldAgent.check_consistency LLM 失败: %s", e)
+            return [], "", model_name, raw_content
+        except Exception as e:
+            logger.warning("WorldAgent.check_consistency 异常: %s", e)
+            return [], "", model_name, raw_content
+
+        json_text = _extract_json_object(raw_content)
+        if not json_text:
+            return [], "", model_name, raw_content
+        try:
+            parsed = json.loads(json_text)
+        except json.JSONDecodeError:
+            return [], "", model_name, raw_content
+        issues, summary = parse_llm_issues(parsed)
+        return issues, summary, model_name, raw_content
 
 
 # ==================== DB 加载辅助 ====================

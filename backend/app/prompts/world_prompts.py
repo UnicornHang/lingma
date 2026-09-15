@@ -142,3 +142,52 @@ def _short(value, max_chars: int) -> str:
         return json.dumps(value, ensure_ascii=False)[:max_chars]
     except Exception:
         return str(value)[:max_chars]
+
+
+def build_consistency_system_prompt() -> str:
+    """世界观一致性检查专用 system prompt(与世界书生成模板分离)。"""
+    return dedent(
+        """\
+        你是网文世界观一致性审校员。对照「世界书」检查「待检正文」是否违反设定。
+
+        【输出纪律】
+        1. 只输出 JSON 对象,禁止 markdown fence,禁止 thinking aloud。
+        2. 顶层结构:{"issues":[...],"summary":"..."}。
+        3. 每条 issue 字段(不得增减):
+           - type (str): geography_conflict | faction_conflict | power_system_violation | timeline_conflict | rule_violation | culture_conflict | other
+           - severity (str): error | warning | info
+           - text (str): 正文中的冲突片段,尽量原文摘录,≤80 字
+           - rule_violated (str): 被违反的世界书规则/设定
+           - suggestion (str): 可执行的修改建议
+           - dimension (str): geography | factions | power_system | timeline | rules | culture | other
+        4. 没有冲突时 issues 必须是空数组 [],summary 写「未发现与世界书冲突」。
+        5. 不要发明世界书里没有的规则;只报告有依据的冲突。
+        6. 最多 12 条;同类冲突合并。
+        """
+    ).strip()
+
+
+def build_consistency_user_prompt(
+    *,
+    work_title: str,
+    world_brief: str,
+    text: str,
+    chapter_title: str | None = None,
+    content_max_chars: int = 6000,
+) -> str:
+    """构造一致性检查 user prompt。"""
+    body = text if len(text) <= content_max_chars else text[:content_max_chars] + "\n...(后续省略)..."
+    chapter_line = f"【章节标题】{chapter_title}\n" if chapter_title else ""
+    world_block = world_brief.strip() or "（世界书为空）"
+    return dedent(
+        f"""\
+        【作品】{work_title}
+        {chapter_line}【世界书】
+        {world_block}
+
+        【待检正文】
+        {body}
+
+        请对照世界书检查正文,直接输出 JSON。
+        """
+    ).strip()

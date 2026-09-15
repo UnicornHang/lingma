@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 
 import { worldApi } from '@/api';
+import { WorldConsistencyPanel } from '@/components/World/WorldConsistencyPanel';
 
 export default function WorldBiblePage() {
   const { id: workId } = useParams<{ id: string }>();
@@ -111,6 +112,15 @@ export default function WorldBiblePage() {
                     />
                   </Form.Item>
                 </Form>
+              ),
+            },
+            {
+              key: 'consistency',
+              label: '一致性检查',
+              children: (
+                <div className="surface-card p-6">
+                  <WorldConsistencyPanel workId={workId} autoCheck />
+                </div>
               ),
             },
             {

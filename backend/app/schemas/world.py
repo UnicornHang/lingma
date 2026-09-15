@@ -175,3 +175,49 @@ class WorldSuggestResponse(BaseModel):
     suggestion: WorldBibleSuggestion
     model_used: str = "mock"
     raw_content: str = ""  # 调试用:LLM 原始输出
+
+
+# ==================== 一致性检查 ====================
+
+ConsistencyIssueType = Literal[
+    "geography_conflict",
+    "faction_conflict",
+    "power_system_violation",
+    "timeline_conflict",
+    "rule_violation",
+    "culture_conflict",
+    "other",
+]
+ConsistencySeverity = Literal["error", "warning", "info"]
+ConsistencySource = Literal["heuristic", "llm"]
+
+
+class ConsistencyIssue(BaseModel):
+    """单条世界观冲突。"""
+
+    type: ConsistencyIssueType = "other"
+    severity: ConsistencySeverity = "warning"
+    text: str = Field(..., max_length=200)
+    rule_violated: str = Field(..., max_length=300)
+    suggestion: str = Field(default="", max_length=300)
+    dimension: str = Field(default="other", max_length=40)
+    source: ConsistencySource = "llm"
+
+
+class ConsistencyCheckRequest(BaseModel):
+    """一致性检查请求。text 与 chapter_id 至少提供其一;都空则自检世界书。"""
+
+    text: str | None = Field(default=None, max_length=50_000)
+    chapter_id: UUID | None = None
+
+
+class ConsistencyCheckResponse(BaseModel):
+    """一致性检查结果。"""
+
+    passed: bool
+    issue_count: int = 0
+    issues: list[ConsistencyIssue] = Field(default_factory=list)
+    summary: str = ""
+    model_used: str = "heuristic"
+    checked_chars: int = 0
+    world_empty: bool = False
