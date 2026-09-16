@@ -18,6 +18,7 @@ import { worksApi, chaptersApi, outlineApi, checkHealth, type Work, type Chapter
 import { ExportWorkModal } from '@/components/Export/ExportWorkModal';
 import { StyleMimicPanel } from '@/components/StyleMimic/StyleMimicPanel';
 import { findFirstChapterNode } from '@/utils/outline';
+import { openOrCreateChapterForNode } from '@/utils/writeChapter';
 
 interface ChapterSummary {
   id: string;
@@ -52,15 +53,7 @@ export default function WorkDetailPage() {
       if (!firstNode) {
         throw new Error('请先在大纲中创建章纲');
       }
-      const listed = await chaptersApi.listByWork(id!, { page: 1, page_size: 50 });
-      const existing = listed.items.find((c) => c.outline_node_id === firstNode.id);
-      if (existing) return existing;
-      return chaptersApi.create({
-        work_id: id!,
-        title: firstNode.title,
-        outline_node_id: firstNode.id,
-        summary: firstNode.summary,
-      });
+      return openOrCreateChapterForNode(id!, firstNode);
     },
     onSuccess: (chapter) => navigate(`/editor/${chapter.id}`),
     onError: (err: unknown) => {
@@ -244,9 +237,20 @@ export default function WorkDetailPage() {
         <section className="surface-card p-6 flex flex-col gap-4">
           <div className="flex items-center justify-between pb-3 border-b border-outline-variant/30">
             <h2 className="text-headline-sm font-semibold text-on-surface">最近章节</h2>
-            <Link to="/editor" className="text-primary text-label-md hover:underline">
-              新建章节
-            </Link>
+            {chapters.length === 0 ? (
+              <Button
+                type="link"
+                className="!px-0"
+                loading={writeFirstMutation.isPending}
+                onClick={() => writeFirstMutation.mutate()}
+              >
+                写第 1 章
+              </Button>
+            ) : (
+              <Link to={`/works/${id}/outline`} className="text-primary text-label-md hover:underline">
+                查看大纲
+              </Link>
+            )}
           </div>
           {chaptersQuery.isLoading ? (
             <Spin />

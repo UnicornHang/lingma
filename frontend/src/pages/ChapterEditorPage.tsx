@@ -117,7 +117,15 @@ export default function ChapterEditorPage() {
   const [latestCritic, setLatestCritic] = useState<CriticSummary | null>(null);
 
   const saveTimerRef = useRef<number | null>(null);
+  const persistRetryRef = useRef(0);
+  const persistRef = useRef<() => Promise<void>>(async () => {});
   const editorRef = useRef<RichEditorHandle>(null);
+
+  const generation = useGenerationStream(taskId);
+  const isStreaming =
+    generation.status === 'streaming' ||
+    generation.status === 'connecting' ||
+    generation.status === 'ready';
 
   // 1) 加载章节
   useEffect(() => {
@@ -151,32 +159,42 @@ export default function ChapterEditorPage() {
   }, []);
 
   const persist = useCallback(async () => {
-    if (!chapter || !dirty) return;
+    if (!chapter || !dirty || isStreaming) return;
     setSaving(true);
     try {
       const updated = await chaptersApi.update(chapter.id, {
         content: content ?? undefined,
         plain_content: plainText,
       });
+      persistRetryRef.current = 0;
       setChapter(updated);
       setDirty(false);
       setLastSavedAt(new Date());
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '保存失败';
-      message.error(msg);
+      const attempt = persistRetryRef.current + 1;
+      persistRetryRef.current = attempt;
+      if (attempt <= 3) {
+        window.setTimeout(() => {
+          void persistRef.current();
+        }, 1000 * attempt);
+      } else {
+        message.error(msg);
+      }
     } finally {
       setSaving(false);
     }
-  }, [chapter, dirty, content, plainText, message]);
+  }, [chapter, dirty, content, plainText, message, isStreaming]);
+  persistRef.current = persist;
 
-  // 防抖自动保存：800ms 后无操作则保存
+  // 防抖自动保存：800ms 后无操作则保存。流式生成期间跳过,避免与 WS 抢 SQLite。
   useEffect(() => {
-    if (!dirty || !chapter) return;
+    if (!dirty || !chapter || isStreaming) return;
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current);
     }
     saveTimerRef.current = window.setTimeout(() => {
-      persist();
+      void persist();
     }, 800);
     return () => {
       if (saveTimerRef.current !== null) {
@@ -184,10 +202,7 @@ export default function ChapterEditorPage() {
         saveTimerRef.current = null;
       }
     };
-  }, [dirty, chapter, persist]);
-
-  // 3) WS 流式生成
-  const generation = useGenerationStream(taskId);
+  }, [dirty, chapter, persist, isStreaming]);
 
   // ==================== [P3] 大纲树数据 (提前到 handleAiContinue 之前,
   // 因为 handleAiContinue 要用 currentOutlineTarget 决定 AI 续写目标字数 / max_tokens) ====================
@@ -595,7 +610,6 @@ export default function ChapterEditorPage() {
 
   // 字数显示
   const wordCount = useMemo(() => plainText.length, [plainText]);
-  const isStreaming = generation.status === 'streaming' || generation.status === 'connecting' || generation.status === 'ready';
 
   // ==================== [P3] 大纲树 UI 状态 ====================
   const [expandedVolumes, setExpandedVolumes] = useState<Set<string>>(new Set());

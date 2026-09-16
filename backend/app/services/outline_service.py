@@ -6,9 +6,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.outline import OutlineNode
+from app.models.outline import OutlineNode, OutlineNodeType
 from app.models.work import Work
-from app.schemas.outline import OutlineNodeCreate, OutlineNodeUpdate
+from app.schemas.outline import OutlineNodeCreate, OutlineNodeUpdate, PlotVolume
 
 
 async def _ensure_work(db: AsyncSession, work_id: UUID) -> None:
@@ -18,6 +18,58 @@ async def _ensure_work(db: AsyncSession, work_id: UUID) -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"作品 {work_id} 不存在",
         )
+
+
+async def bulk_create_volumes(
+    db: AsyncSession,
+    work_id: UUID,
+    volumes: Sequence[PlotVolume],
+    *,
+    default_chapter_words: int = 3000,
+) -> list[OutlineNode]:
+    """按卷→章写入大纲节点，不 commit（由调用方统一提交）。"""
+    await _ensure_work(db, work_id)
+    chapter_words = max(100, min(20_000, default_chapter_words or 3000))
+    created: list[OutlineNode] = []
+    order_vol = 0
+    for vol in volumes:
+        order_vol += 1
+        vol_node = OutlineNode(
+            work_id=work_id,
+            parent_id=None,
+            type=OutlineNodeType.VOLUME,
+            title=vol.vol_title[:200],
+            summary=(vol.summary or "")[:2000],
+            beats=[],
+            characters_involved=[],
+            world_refs=[],
+            target_word_count=chapter_words,
+            order=order_vol,
+        )
+        db.add(vol_node)
+        await db.flush()
+        created.append(vol_node)
+
+        order_ch = 0
+        for ch in vol.chapters:
+            order_ch += 1
+            beats_text = [b.title for b in ch.beats if b.title]
+            ch_node = OutlineNode(
+                work_id=work_id,
+                parent_id=vol_node.id,
+                type=OutlineNodeType.CHAPTER,
+                title=ch.title[:200],
+                summary=(ch.summary or "")[:2000],
+                beats=beats_text,
+                characters_involved=list(ch.characters_involved),
+                world_refs=list(ch.world_refs),
+                target_word_count=max(100, min(20_000, ch.target_word_count or chapter_words)),
+                order=order_ch,
+            )
+            db.add(ch_node)
+            created.append(ch_node)
+    await db.flush()
+    return created
 
 
 async def create_outline_node(db: AsyncSession, payload: OutlineNodeCreate) -> OutlineNode:

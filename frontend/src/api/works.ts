@@ -1,4 +1,5 @@
 import { http } from './client';
+import type { PlotVolume } from './outline';
 
 export type Genre =
   | 'fantasy'
@@ -10,6 +11,21 @@ export type Genre =
   | 'other';
 
 export type WorkStatus = 'draft' | 'writing' | 'finished' | 'archived';
+
+export type WizardPace = 'slow' | 'balanced' | 'fast';
+
+/** 新建向导种子，与后端 WorkWizardSeed 对齐。 */
+export interface WorkWizardSeed {
+  pen_name?: string;
+  volume1_name?: string;
+  chapter_target_words?: number;
+  pace?: WizardPace;
+  reader_portrait?: string;
+  core_conflict?: string;
+  protagonist?: string;
+  origin_setting?: string;
+  opening_beats?: string[];
+}
 
 export interface Work {
   id: string;
@@ -40,9 +56,14 @@ export interface WorkCreate {
   target_word_count?: number;
   style_keywords?: string[];
   target_audience?: string[];
+  seed?: WorkWizardSeed;
+  volumes?: PlotVolume[];
 }
 
-export type WorkUpdate = Partial<WorkCreate> & { status?: WorkStatus };
+export type WorkUpdate = Partial<Omit<WorkCreate, 'seed' | 'volumes'>> & {
+  status?: WorkStatus;
+  settings?: Record<string, unknown>;
+};
 
 export interface WorkChaptersResponse {
   work: Work;

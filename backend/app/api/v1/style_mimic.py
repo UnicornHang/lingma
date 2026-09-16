@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.style_mimic_agent import StyleMimicAgent, _prepare_sample
@@ -108,12 +108,14 @@ async def patch_style_mimic(
 @router.delete(
     "/works/{work_id}/style-mimic",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
     summary="删除仿文风格画像",
 )
 async def delete_style_mimic(
     work_id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> None:
+) -> Response:
     """清除风格记忆；不影响风格关键词与账本。"""
     await style_mimic_service.delete_style_profile(db, work_id)
     await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

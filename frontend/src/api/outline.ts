@@ -128,7 +128,9 @@ export const outlineApi = {
   delete: (nodeId: string) => http.delete<void>(`/outline/${nodeId}`),
 
   aiSuggest: (workId: string, payload: PlotOutlineRequest) =>
-    http.post<PlotOutlineResponse>(`/works/${workId}/outline/ai-outline`, payload),
+    http.post<PlotOutlineResponse>(`/works/${workId}/outline/ai-outline`, payload, {
+      timeout: 180_000,
+    }),
 
   aiPreview: (payload: {
     work_preview: {
@@ -143,7 +145,10 @@ export const outlineApi = {
     total_volumes?: number;
     target_chapter_count?: number | null;
     extra_hint?: string;
-  }) => http.post<PlotOutlineResponse>('/outline/ai-preview', payload),
+  }) =>
+    http.post<PlotOutlineResponse>('/outline/ai-preview', payload, {
+      timeout: 180_000,
+    }),
 
   /** PlotAgent 扩写本章细纲；返回建议，需再 update 落库 */
   aiExpand: (nodeId: string, payload?: PlotChapterExpandRequest) =>

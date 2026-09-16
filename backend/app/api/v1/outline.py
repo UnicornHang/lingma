@@ -3,7 +3,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.plot_agent import PlotAgent
@@ -220,7 +219,7 @@ class PlotOutlinePreviewRequest(BaseModel):
     work_preview: WorkPreview
     total_volumes: int = Field(default=3, ge=1, le=10)
     target_chapter_count: int | None = Field(default=None, ge=1, le=200)
-    extra_hint: str | None = Field(default=None, max_length=500)
+    extra_hint: str | None = Field(default=None, max_length=2000)
 
 
 @router.post(
@@ -233,24 +232,37 @@ async def ai_generate_outline_preview(
     db: AsyncSession = Depends(get_db),
 ) -> PlotOutlineResponse:
     """Wizard 等"作品尚未入库"的场景下使用：把 work 字段 inline 传给 Agent。"""
-    from app.models.work import Work
+    from types import SimpleNamespace
 
-    work = Work(
-        id=UUID(int=0),  # 占位;不会写库
+    from app.models.work import Genre
+
+    genre_raw = (payload.work_preview.genre or "other").strip().lower()
+    try:
+        genre = Genre(genre_raw)
+    except ValueError:
+        genre = Genre.OTHER
+
+    # 不能实例化 ORM Work：模型没有 notes 字段，且预览不得写库。
+    work = SimpleNamespace(
         title=payload.work_preview.title,
-        genre=payload.work_preview.genre,
-        logline=payload.work_preview.logline,
+        genre=genre,
+        logline=payload.work_preview.logline or "",
         style_keywords=payload.work_preview.style_keywords,
         target_audience=payload.work_preview.target_audience,
-        notes=payload.work_preview.notes,
-        target_word_count=payload.work_preview.target_word_count,
+        notes=payload.work_preview.notes or "",
+        target_word_count=payload.work_preview.target_word_count or 1_000_000,
     )
     agent = PlotAgent()
+    # 向导预览未指定章数时，按卷给 3–6 章骨架，避免一次生成 30+ 章超时。
+    chapter_count = payload.target_chapter_count
+    if chapter_count is None:
+        words = work.target_word_count or 1_000_000
+        chapter_count = min(20, max(payload.total_volumes * 3, words // 5_000))
     response, _model = await agent.generate_outline(
         db,
         work=work,
         total_volumes=payload.total_volumes,
-        target_chapter_count=payload.target_chapter_count,
+        target_chapter_count=chapter_count,
         extra_hint=payload.extra_hint,
     )
     return response
@@ -273,56 +285,9 @@ async def bulk_create_outline_nodes(
     - 每个 chapter 创建 type=chapter 节点(parent_id=对应 volume.id)
     - 整批在同一事务中提交,失败回滚
     """
-    # 校验作品存在
-    from app.models.work import Work
-    exists = await db.execute(select(Work.id).where(Work.id == work_id))
-    if not exists.scalar_one_or_none():
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"作品 {work_id} 不存在",
-        )
-
-    created_nodes: list[OutlineNode] = []
-    order_vol = 0
-    for vol in payload.volumes:
-        order_vol += 1
-        vol_node = OutlineNode(
-            work_id=work_id,
-            parent_id=None,
-            type=OutlineNodeType.VOLUME,
-            title=vol.vol_title[:200],
-            summary=(vol.summary or "")[:2000],
-            beats=[],
-            characters_involved=[],
-            world_refs=[],
-            target_word_count=3000,
-            order=order_vol,
-        )
-        db.add(vol_node)
-        await db.flush()  # 取到 vol_node.id
-        created_nodes.append(vol_node)
-
-        order_ch = 0
-        for ch in vol.chapters:
-            order_ch += 1
-            # 把 beat 标题与 summary 拍平为 beats(str) 列表
-            beats_text = [b.title for b in ch.beats if b.title]
-            ch_node = OutlineNode(
-                work_id=work_id,
-                parent_id=vol_node.id,
-                type=OutlineNodeType.CHAPTER,
-                title=ch.title[:200],
-                summary=(ch.summary or "")[:2000],
-                beats=beats_text,
-                characters_involved=list(ch.characters_involved),
-                world_refs=list(ch.world_refs),
-                target_word_count=max(100, min(20_000, ch.target_word_count or 3000)),
-                order=order_ch,
-            )
-            db.add(ch_node)
-            created_nodes.append(ch_node)
-
+    created_nodes = await outline_service.bulk_create_volumes(
+        db, work_id, payload.volumes
+    )
     await db.commit()
     for n in created_nodes:
         await db.refresh(n)

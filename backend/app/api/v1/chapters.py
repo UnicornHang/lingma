@@ -91,6 +91,7 @@ async def create_chapter_endpoint(
     chapter = await chapter_service.create_chapter(db, payload)
     await db.commit()
     await db.refresh(chapter)
+    chapter_service.schedule_chapter_summary_index(chapter.id)
     return ChapterRead.model_validate(chapter)
 
 
@@ -120,6 +121,7 @@ async def update_chapter_endpoint(
     chapter = await chapter_service.update_chapter(db, chapter_id, payload)
     await db.commit()
     await db.refresh(chapter)
+    chapter_service.schedule_chapter_summary_index(chapter.id)
     return ChapterRead.model_validate(chapter)
 
 

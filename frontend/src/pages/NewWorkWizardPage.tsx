@@ -24,7 +24,7 @@ import {
   Info,
 } from 'lucide-react';
 
-import { worksApi, outlineApi, type Genre, type PlotVolume } from '@/api';
+import { worksApi, outlineApi, type Genre, type PlotVolume, type WizardPace } from '@/api';
 import { useCurrentWorkStore } from '@/stores/useCurrentWorkStore';
 
 const STEPS = [
@@ -50,7 +50,7 @@ const GENRE_TO_BACKEND: Record<string, Genre> = {
 const GENRES = [
   { key: 'fantasy',    label: '玄幻 / 修仙', desc: '修炼体系 + 异世界',  Icon: BookOpen,       checked: true },
   { key: 'urban',      label: '都市 / 现实', desc: '现代背景 + 情感',    Icon: Building2,      checked: false },
-  { key: 'sci_fi',     label: '科幻 / 末世', desc: '技术设定 + 推演',    Icon: Rocket,         checked: true },
+  { key: 'sci_fi',     label: '科幻 / 末世', desc: '技术设定 + 推演',    Icon: Rocket,         checked: false },
   { key: 'historical', label: '历史 / 架空', desc: '朝代 / 异世界历史',  Icon: Building,      checked: false },
   { key: 'mystery',    label: '悬疑 / 推理', desc: '案件 + 反转',         Icon: Brain,          checked: false },
   { key: 'romance',    label: '言情 / 甜宠', desc: '情感主线',            Icon: Heart,          checked: false },
@@ -58,17 +58,23 @@ const GENRES = [
   { key: 'custom',     label: '自定义',       desc: '告诉我更多…',        Icon: Plus,           checked: false },
 ];
 
-const SELECTED_KEYWORDS = ['热血狂飙', '杀伐果断', '严谨设定', '反转不断'];
-const CANDIDATE_KEYWORDS = ['轻松幽默', '智商在线', '群像推演', '慢热种田', '甜虐交织', '史诗气魄'];
+const SELECTED_KEYWORDS: string[] = [];
+const CANDIDATE_KEYWORDS = ['热血狂飙', '杀伐果断', '严谨设定', '反转不断', '轻松幽默', '智商在线', '群像推演', '慢热种田', '甜虐交织', '史诗气魄'];
 
 /** 将"100 万字" / "80万字" / "500000" 解析为整数，非法时返回 fallback */
 function parseWordCount(input: string, fallback = 1_000_000): number {
-  const m = input.match(/([\d.]+)/);
+  const m = input.replace(/,/g, '').match(/([\d.]+)/);
   if (!m) return fallback;
   const num = parseFloat(m[1]);
   if (!Number.isFinite(num) || num <= 0) return fallback;
   if (/万/.test(input)) return Math.round(num * 10_000);
   return Math.round(num);
+}
+
+/** 章节目标字数：去掉逗号后取整数，并夹到合法区间。 */
+function parseChapterWords(input: string, fallback = 3500): number {
+  const n = parseWordCount(input, fallback);
+  return Math.min(20_000, Math.max(100, n));
 }
 
 export default function NewWorkWizardPage() {
@@ -78,21 +84,28 @@ export default function NewWorkWizardPage() {
 
   const [step, setStep] = useState(0); // 0-based: 0..4
   const [audience, setAudience] = useState<'male' | 'female' | 'all'>('male');
-  const [pace, setPace] = useState<'slow' | 'balanced' | 'fast'>('balanced');
+  const [pace, setPace] = useState<WizardPace>('balanced');
   const [genre, setGenre] = useState<Set<string>>(
     new Set(GENRES.filter((g) => g.checked).map((g) => g.key))
   );
   const [keywords, setKeywords] = useState<Set<string>>(new Set(SELECTED_KEYWORDS));
 
   // Step 1 字段
-  const [title, setTitle] = useState('剑来·前传');
-  const [logline, setLogline] = useState('讲述陈平安从骊珠洞天走出后的一段尘缘。');
-  const [penName, setPenName] = useState('烽火戏诸侯');
-  const [volume1Name, setVolume1Name] = useState('少年游');
+  const [title, setTitle] = useState('');
+  const [logline, setLogline] = useState('');
+  const [penName, setPenName] = useState('');
+  const [volume1Name, setVolume1Name] = useState('第一卷');
 
   // Step 2 字段
-  const [chapterWords, setChapterWords] = useState('3,500');
+  const [chapterWords, setChapterWords] = useState('3500');
   const [targetTotal, setTargetTotal] = useState('100 万字');
+  const [readerPortrait, setReaderPortrait] = useState('');
+
+  // Step 3 世界观种子（真正落库）
+  const [coreConflict, setCoreConflict] = useState('');
+  const [protagonist, setProtagonist] = useState('');
+  const [originSetting, setOriginSetting] = useState('');
+  const [openingBeats, setOpeningBeats] = useState<string[]>(['']);
 
   // Step 4 (AI 大纲) 状态
   const [aiVolumes, setAiVolumes] = useState<PlotVolume[]>([]);
@@ -131,13 +144,29 @@ export default function NewWorkWizardPage() {
   }, [audience]);
 
   const targetWordCount = useMemo(() => parseWordCount(targetTotal, 1_000_000), [targetTotal]);
+  const chapterTargetWords = useMemo(() => parseChapterWords(chapterWords, 3500), [chapterWords]);
+  const cleanedBeats = useMemo(
+    () => openingBeats.map((b) => b.trim()).filter(Boolean),
+    [openingBeats],
+  );
+
+  /** 拼给 AI 预览的附加说明，避免世界观步骤白填。 */
+  const seedHint = useMemo(() => {
+    const parts: string[] = [];
+    if (protagonist.trim()) parts.push(`主角：${protagonist.trim()}`);
+    if (originSetting.trim()) parts.push(`起点：${originSetting.trim()}`);
+    if (coreConflict.trim()) parts.push(`核心矛盾：${coreConflict.trim()}`);
+    if (cleanedBeats.length) parts.push(`开篇节拍：${cleanedBeats.join(' / ')}`);
+    if (aiHint.trim()) parts.push(aiHint.trim());
+    return parts.join('\n');
+  }, [protagonist, originSetting, coreConflict, cleanedBeats, aiHint]);
 
   // AI 大纲预览
   const aiPreviewMutation = useMutation({
     mutationFn: () =>
       outlineApi.aiPreview({
         work_preview: {
-          title: title.trim(),
+          title: title.trim() || '未命名作品',
           genre: primaryGenre,
           logline: logline.trim(),
           style_keywords: [...keywords],
@@ -146,7 +175,7 @@ export default function NewWorkWizardPage() {
         },
         total_volumes: aiTotalVolumes,
         target_chapter_count: aiTargetChapters,
-        extra_hint: aiHint.trim() || undefined,
+        extra_hint: seedHint ? seedHint.slice(0, 2000) : undefined,
       }),
     onSuccess: (resp) => {
       if (!resp.volumes.length) {
@@ -180,7 +209,7 @@ export default function NewWorkWizardPage() {
     [selectedVolumes],
   );
 
-  /** 真正调用后端 API 创建作品 + 写入大纲 */
+  /** 真正调用后端 API 创建作品 + 写入大纲 / 世界观种子 */
   const handleCreate = async () => {
     if (!title.trim()) {
       message.warning('请填写作品标题');
@@ -196,21 +225,25 @@ export default function NewWorkWizardPage() {
         target_word_count: targetWordCount,
         style_keywords: [...keywords],
         target_audience: audienceArr,
+        seed: {
+          pen_name: penName.trim(),
+          volume1_name: volume1Name.trim() || '第一卷',
+          chapter_target_words: chapterTargetWords,
+          pace,
+          reader_portrait: readerPortrait.trim(),
+          core_conflict: coreConflict.trim(),
+          protagonist: protagonist.trim(),
+          origin_setting: originSetting.trim(),
+          opening_beats: cleanedBeats,
+        },
+        volumes: selectedVolumes,
       });
-      // 若用户在第 4 步勾选了 AI 大纲,落库
-      if (selectedVolumes.length > 0) {
-        try {
-          await outlineApi.bulkCreate(created.id, { volumes: selectedVolumes });
-          message.success(`作品 + ${selectedVolumes.length} 卷大纲已创建`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : '大纲写入失败';
-          message.warning(`作品已创建,但大纲写入失败: ${msg}`);
-        }
-      } else {
-        message.success(`作品《${created.title}》创建成功`);
-      }
-      navigate(`/works/${created.id}/outline`);
+      const outlineHint = selectedVolumes.length
+        ? `${selectedVolumes.length} 卷 AI 大纲`
+        : '起步大纲（一卷一章）';
+      message.success(`作品《${created.title}》已创建，已写入${outlineHint}`);
       setCurrentWorkId(created.id);
+      navigate(`/works/${created.id}/outline`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '创建失败';
       message.error(msg);
@@ -219,7 +252,13 @@ export default function NewWorkWizardPage() {
     }
   };
 
-  const next = () => setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  const next = () => {
+    if (step === 0 && !title.trim()) {
+      message.warning('请先填写作品标题');
+      return;
+    }
+    setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  };
   const prev = () => setStep((s) => Math.max(0, s - 1));
 
   return (
@@ -357,7 +396,9 @@ export default function NewWorkWizardPage() {
                     <label className="text-label-md text-on-surface">读者画像</label>
                     <Input.TextArea
                       rows={4}
-                      defaultValue="15-35 岁男性读者，热衷爽文节奏与修炼升级，期待清晰的目标—冲突—收获循环。"
+                      value={readerPortrait}
+                      onChange={(e) => setReaderPortrait(e.target.value)}
+                      placeholder="例如：15-35 岁男性读者，热衷爽文节奏与修炼升级。"
                     />
                   </div>
                 </div>
@@ -434,8 +475,14 @@ export default function NewWorkWizardPage() {
           )}
           {step === 2 && (
             <StepWorld
-              protagonist="陈平安"
-              onProtagonist={() => {/* kept static */}}
+              coreConflict={coreConflict}
+              protagonist={protagonist}
+              originSetting={originSetting}
+              openingBeats={openingBeats}
+              onCoreConflict={setCoreConflict}
+              onProtagonist={setProtagonist}
+              onOriginSetting={setOriginSetting}
+              onOpeningBeats={setOpeningBeats}
             />
           )}
           {step === 3 && (
@@ -466,6 +513,10 @@ export default function NewWorkWizardPage() {
               chapterWords={chapterWords}
               targetTotal={targetTotal}
               keywords={[...keywords]}
+              protagonist={protagonist}
+              originSetting={originSetting}
+              coreConflict={coreConflict}
+              openingBeatCount={cleanedBeats.length}
               aiOutlineCount={aiOutlineCount}
               aiVolumeCount={selectedVolumes.length}
             />
@@ -480,7 +531,7 @@ export default function NewWorkWizardPage() {
               {step < 2
                 ? '下一步补世界观与受众；创建后停在细纲，不会自动写正文'
                 : step === 3
-                  ? '勾选的大纲会在创建时写入；不会调用 Writer 写第 1 章'
+                  ? '勾选的大纲会在创建时写入；不勾选也会生成起步一卷一章'
                   : '创建后进入大纲页。点「写第 1 章」才会进编辑器'}
             </span>
           </div>
@@ -546,6 +597,7 @@ function StepBasics({
           size="large"
           value={title}
           onChange={(e) => onTitle(e.target.value)}
+          placeholder="例如：剑来·前传"
         />
       </div>
       <div className="flex flex-col gap-2">
@@ -554,6 +606,7 @@ function StepBasics({
           rows={4}
           value={logline}
           onChange={(e) => onLogline(e.target.value)}
+          placeholder="一句话讲清楚主角、目标和冲突"
         />
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -563,6 +616,7 @@ function StepBasics({
             size="large"
             value={penName}
             onChange={(e) => onPenName(e.target.value)}
+            placeholder="可选"
           />
         </div>
         <div className="flex flex-col gap-2">
@@ -571,6 +625,7 @@ function StepBasics({
             size="large"
             value={volume1Name}
             onChange={(e) => onVolume1Name(e.target.value)}
+            placeholder="第一卷"
           />
         </div>
       </div>
@@ -579,42 +634,100 @@ function StepBasics({
 }
 
 interface StepWorldProps {
+  coreConflict: string;
   protagonist: string;
+  originSetting: string;
+  openingBeats: string[];
+  onCoreConflict: (v: string) => void;
   onProtagonist: (v: string) => void;
+  onOriginSetting: (v: string) => void;
+  onOpeningBeats: (v: string[]) => void;
 }
 
-function StepWorld({ protagonist: _protagonist, onProtagonist: _onProtagonist }: StepWorldProps) {
+/** 世界观种子步骤：字段会随作品一起落库。 */
+function StepWorld({
+  coreConflict,
+  protagonist,
+  originSetting,
+  openingBeats,
+  onCoreConflict,
+  onProtagonist,
+  onOriginSetting,
+  onOpeningBeats,
+}: StepWorldProps) {
+  const updateBeat = (index: number, value: string) => {
+    onOpeningBeats(openingBeats.map((b, i) => (i === index ? value : b)));
+  };
+  const removeBeat = (index: number) => {
+    const next = openingBeats.filter((_, i) => i !== index);
+    onOpeningBeats(next.length ? next : ['']);
+  };
+  const addBeat = () => {
+    if (openingBeats.length >= 12) return;
+    onOpeningBeats([...openingBeats, '']);
+  };
+
   return (
     <div className="flex flex-col gap-4 max-w-3xl">
       <h3 className="text-headline-sm font-semibold text-on-surface">世界观种子（可后续精修）</h3>
+      <p className="text-body-sm text-on-surface-variant">
+        这些内容会写入世界书、主角卡和起步章纲；留空也可以，系统会用简介生成第一章细纲。
+      </p>
       <div className="flex flex-col gap-2">
         <label className="text-label-md text-on-surface">核心矛盾</label>
         <Input.TextArea
           rows={4}
-          defaultValue="陈平安要在仙凡混杂的乱世中寻找自己的道，同时守护他珍视的人。"
+          value={coreConflict}
+          onChange={(e) => onCoreConflict(e.target.value)}
+          placeholder="主角要解决什么问题、守护什么、对抗什么"
         />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <label className="text-label-md text-on-surface">主角名</label>
-          <Input size="large" defaultValue="陈平安" />
+          <Input
+            size="large"
+            value={protagonist}
+            onChange={(e) => onProtagonist(e.target.value)}
+            placeholder="例如：陈平安"
+          />
         </div>
         <div className="flex flex-col gap-2">
           <label className="text-label-md text-on-surface">起点设定</label>
-          <Input size="large" defaultValue="骊珠洞天 · 少年游" />
+          <Input
+            size="large"
+            value={originSetting}
+            onChange={(e) => onOriginSetting(e.target.value)}
+            placeholder="例如：骊珠洞天 · 少年游"
+          />
         </div>
       </div>
       <div className="flex flex-col gap-2">
         <label className="text-label-md text-on-surface">期望前三章的节拍</label>
         <div className="flex flex-col gap-2">
-          {['楔子：骊珠洞天少年不识愁滋味', '第一章：邻居少年远行求学', '第二章：入山门拜师'].map((b, i) => (
+          {openingBeats.map((b, i) => (
             <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-container-low border border-outline-variant/40">
               <GripVertical size={18} className="text-primary" />
               <span className="font-code-sm text-on-surface-variant w-6">{i + 1}</span>
-              <span className="flex-1 text-body-md text-on-surface">{b}</span>
-              <Button type="text" shape="circle" danger icon={<Trash2 size={18} />} aria-label="删除节拍" />
+              <Input
+                className="!flex-1"
+                value={b}
+                onChange={(e) => updateBeat(i, e.target.value)}
+                placeholder={i === 0 ? '楔子或第一章发生什么' : '下一章节拍'}
+              />
+              <Button
+                type="text"
+                shape="circle"
+                danger
+                icon={<Trash2 size={18} />}
+                aria-label="删除节拍"
+                onClick={() => removeBeat(i)}
+              />
             </div>
           ))}
+          <Button type="dashed" icon={<Plus size={16} />} onClick={addBeat} disabled={openingBeats.length >= 12}>
+            添加节拍
+          </Button>
         </div>
       </div>
     </div>
@@ -758,6 +871,10 @@ interface StepReviewProps {
   chapterWords: string;
   targetTotal: string;
   keywords: string[];
+  protagonist: string;
+  originSetting: string;
+  coreConflict: string;
+  openingBeatCount: number;
   aiVolumeCount: number;
   aiOutlineCount: number;
 }
@@ -765,6 +882,7 @@ interface StepReviewProps {
 function StepReview({
   title, logline, penName, volume1Name,
   genre, audience, pace, chapterWords, targetTotal, keywords,
+  protagonist, originSetting, coreConflict, openingBeatCount,
   aiVolumeCount, aiOutlineCount,
 }: StepReviewProps) {
   return (
@@ -780,19 +898,26 @@ function StepReview({
         <Row label="章节字数" value={chapterWords} />
         <Row label="目标总字数" value={targetTotal} />
         <Row label="风格关键词" value={keywords.join(', ') || '（未选）'} />
-        <Row label="主笔名" value={penName} />
-        <Row label="第一卷名" value={volume1Name} />
+        <Row label="主笔名" value={penName || '（未填）'} />
+        <Row label="第一卷名" value={volume1Name || '第一卷'} />
+        <Row label="主角" value={protagonist || '（未填，可稍后补）'} />
+        <Row label="起点设定" value={originSetting || '（未填）'} />
+        <Row label="核心矛盾" value={coreConflict || '（未填）'} />
+        <Row label="开篇节拍" value={openingBeatCount > 0 ? `${openingBeatCount} 条` : '（未填）'} />
         <Row label="一句话简介" value={logline || '（未填）'} />
         <Row
-          label="AI 大纲"
-          value={aiVolumeCount > 0 ? `${aiVolumeCount} 卷 / ${aiOutlineCount} 章` : '（跳过,稍后手动创建）'}
+          label="大纲"
+          value={
+            aiVolumeCount > 0
+              ? `${aiVolumeCount} 卷 / ${aiOutlineCount} 章`
+              : '跳过 AI 大纲，将写入起步一卷一章'
+          }
           highlight={aiVolumeCount > 0}
         />
       </div>
       <div className="px-3 py-2 rounded-lg bg-tertiary-container/20 text-body-sm text-on-surface-variant">
         <Info size={18} className="align-middle text-tertiary inline" />{' '}
-        创建后停在细纲，不会自动写正文。作品库位于{' '}
-        <code>data/works/&lt;work_id&gt;/</code>。
+        创建后停在细纲，不会自动写正文。到大纲页点「写第 1 章」再进编辑器续写。
       </div>
     </div>
   );

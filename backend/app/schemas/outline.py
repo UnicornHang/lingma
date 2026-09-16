@@ -102,18 +102,44 @@ class OutlineTreeResponse(BaseModel):
 
 
 class PlotBeat(BaseModel):
-    """LLM 输出：节拍要点"""
+    """LLM 输出：节拍要点。extra=ignore：模型常夹带多余字段。"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     title: str = Field(..., min_length=1, max_length=100)
     summary: str = Field(default="", max_length=500)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def _clip_title(cls, value):
+        """过长标题截断，避免整卷被丢掉。"""
+        if isinstance(value, str):
+            return value.strip()[:100]
+        return value
+
+
+def _coerce_plot_beats(value):
+    """兼容 LLM 把节拍写成字符串列表或 {title,summary}。"""
+    if not value:
+        return []
+    out: list[dict] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            out.append({"title": item.strip()[:100], "summary": ""})
+        elif isinstance(item, dict):
+            title = str(item.get("title") or item.get("summary") or "").strip()
+            if title:
+                out.append({
+                    "title": title[:100],
+                    "summary": str(item.get("summary") or "")[:500],
+                })
+    return out
 
 
 class PlotChapter(BaseModel):
     """LLM 输出：单章大纲"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     title: str = Field(..., min_length=1, max_length=200)
     summary: str = Field(default="", max_length=2000)
@@ -123,16 +149,35 @@ class PlotChapter(BaseModel):
     world_refs: list[str] = Field(default_factory=list, max_length=20)
     key_events: list[str] = Field(default_factory=list, max_length=10)
 
+    @field_validator("beats", mode="before")
+    @classmethod
+    def _coerce_beats(cls, value):
+        return _coerce_plot_beats(value)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def _clip_title(cls, value):
+        if isinstance(value, str):
+            return value.strip()[:200]
+        return value
+
 
 class PlotVolume(BaseModel):
     """LLM 输出：单卷大纲"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     vol_no: int = Field(..., ge=1, le=100)
     vol_title: str = Field(..., min_length=1, max_length=200)
     summary: str = Field(default="", max_length=2000)
     chapters: list[PlotChapter] = Field(default_factory=list, max_length=200)
+
+    @field_validator("vol_title", mode="before")
+    @classmethod
+    def _clip_vol_title(cls, value):
+        if isinstance(value, str):
+            return value.strip()[:200]
+        return value
 
 
 class PlotOutlineRequest(BaseModel):
@@ -140,7 +185,7 @@ class PlotOutlineRequest(BaseModel):
 
     total_volumes: int = Field(default=3, ge=1, le=10)
     target_chapter_count: int | None = Field(default=None, ge=1, le=200)
-    extra_hint: str | None = Field(default=None, max_length=500)
+    extra_hint: str | None = Field(default=None, max_length=2000)
 
 
 class PlotOutlineResponse(BaseModel):

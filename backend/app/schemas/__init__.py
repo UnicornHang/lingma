@@ -23,6 +23,7 @@ from app.schemas.work import (
     WorkListResponse,
     WorkRead,
     WorkUpdate,
+    WorkWizardSeed,
 )
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "WorkUpdate",
     "WorkRead",
     "WorkListResponse",
+    "WorkWizardSeed",
     # chapter
     "ChapterBase",
     "ChapterCreate",

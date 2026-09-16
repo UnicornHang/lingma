@@ -129,7 +129,7 @@ class PlotAgent(BaseAgent):
             ],
             model=model_name,
             temperature=0.7,
-            max_tokens=min(8192, 1200 + target_chapter_count * 180),
+            max_tokens=min(16_384, 2_000 + target_chapter_count * 280),
             stream=False,
         )
 

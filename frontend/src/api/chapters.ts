@@ -117,7 +117,8 @@ export const chaptersApi = {
 
   create: (data: ChapterCreate) => http.post<Chapter>('/chapters/', data),
 
-  update: (id: string, data: ChapterUpdate) => http.patch<Chapter>(`/chapters/${id}`, data),
+  update: (id: string, data: ChapterUpdate) =>
+    http.patch<Chapter>(`/chapters/${id}`, data, { timeout: 60_000 }),
 
   delete: (id: string) => http.delete<void>(`/chapters/${id}`),
 

@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Empty, Spin, App, Button, Space } from 'antd';
 import {
@@ -12,9 +13,10 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-import { worksApi, type Work, type Paginated } from '@/api/works';
+import { worksApi, type Work, type Paginated, type WorkStatus } from '@/api/works';
 import { checkHealth } from '@/api/client';
 import { useCurrentWorkStore } from '@/stores/useCurrentWorkStore';
+import { formatRelativeTime, formatWordCount } from '@/utils/format';
 
 const GENRE_LABEL: Record<string, { label: string; chipClass: string }> = {
   fantasy:    { label: '玄幻', chipClass: 'chip-tertiary' },
@@ -26,7 +28,7 @@ const GENRE_LABEL: Record<string, { label: string; chipClass: string }> = {
   other:      { label: '其他', chipClass: 'chip-secondary' },
 };
 
-const STATUS_CHIP: Record<string, { label: string; cls: string; icon?: React.ReactNode }> = {
+const STATUS_CHIP: Record<string, { label: string; cls: string }> = {
   draft:    { label: '草稿',   cls: 'chip-secondary' },
   writing:  { label: '连载中', cls: 'chip-tertiary' },
   finished: { label: '已完结', cls: 'chip-secondary' },
@@ -34,18 +36,16 @@ const STATUS_CHIP: Record<string, { label: string; cls: string; icon?: React.Rea
 };
 
 const STATUS_GRADIENT: Record<string, string> = {
-  writing:  'from-[#047857] via-[#0d9488] to-[#14b8a6]',  // Figma: 深emerald → teal
-  finished: 'from-[#f59e0b] via-[#fbbf24] to-[#fde68a]',  // Figma: 琥珀渐变
-  draft:    'from-[#94a3b8] via-[#cbd5e1] to-[#e2e8f0]',  // 浅灰渐变
-  archived: 'from-[#b91c1c] via-[#dc2626] to-[#f87171]',  // 暗红渐变
+  writing:  'from-[#047857] via-[#0d9488] to-[#14b8a6]',
+  finished: 'from-[#f59e0b] via-[#fbbf24] to-[#fde68a]',
+  draft:    'from-[#94a3b8] via-[#cbd5e1] to-[#e2e8f0]',
+  archived: 'from-[#b91c1c] via-[#dc2626] to-[#f87171]',
 };
 
 function WorkCard({ work, isCurrent }: { work: Work; isCurrent: boolean }) {
   const genre = GENRE_LABEL[work.genre] || GENRE_LABEL.other;
   const status = STATUS_CHIP[work.status] || STATUS_CHIP.draft;
   const gradient = STATUS_GRADIENT[work.status] || STATUS_GRADIENT.draft;
-  const wordWan = (work.word_count / 10000).toFixed(1);
-  const targetWan = (work.target_word_count / 10000).toFixed(0);
 
   return (
     <Link
@@ -54,7 +54,6 @@ function WorkCard({ work, isCurrent }: { work: Work; isCurrent: boolean }) {
         isCurrent ? 'shadow-L2-popover' : ''
       }`}
     >
-      {/* Banner — emerald/teal gradient (Figma) */}
       <div className={`relative h-32 bg-gradient-to-br ${gradient}`}>
         <div className="absolute top-3 right-3">
           <span className="px-2 py-0.5 rounded-full bg-white/90 text-on-surface text-label-sm font-medium backdrop-blur-sm">
@@ -85,16 +84,16 @@ function WorkCard({ work, isCurrent }: { work: Work; isCurrent: boolean }) {
           )}
         </div>
         <p className="text-body-sm text-on-surface-variant text-ellipsis-2">
-          {work.logline || '讲述一段尘缘。'}
+          {work.logline || '（暂无简介）'}
         </p>
         <div className="flex items-center gap-1 mt-1">
           <span className={genre.chipClass}>{genre.label}</span>
         </div>
         <div className="mt-auto pt-3 border-t border-outline-variant/30 flex items-center justify-between font-code-sm text-on-surface-variant">
           <span>
-            {wordWan} 万字 / {targetWan} 万字
+            {formatWordCount(work.word_count)} / {formatWordCount(work.target_word_count)}
           </span>
-          <span>2 小时前</span>
+          <span>{formatRelativeTime(work.updated_at)}</span>
         </div>
       </div>
     </Link>
@@ -104,6 +103,7 @@ function WorkCard({ work, isCurrent }: { work: Work; isCurrent: boolean }) {
 export default function WorksListPage() {
   const { message } = App.useApp();
   const currentWorkId = useCurrentWorkStore((s) => s.currentWorkId);
+  const [statusFilter, setStatusFilter] = useState<WorkStatus | 'all'>('all');
   const { data, isLoading, error } = useQuery({
     queryKey: ['works'],
     queryFn: () => worksApi.list({ page: 1, page_size: 50 }),
@@ -124,6 +124,19 @@ export default function WorksListPage() {
     enabled: false,
   });
 
+  const works = (data as Paginated<Work> | undefined)?.items || [];
+  const totalWords = useMemo(
+    () => works.reduce((sum, w) => sum + (w.word_count || 0), 0),
+    [works],
+  );
+  const counts = useMemo(() => ({
+    all: works.length,
+    writing: works.filter((w) => w.status === 'writing').length,
+    finished: works.filter((w) => w.status === 'finished').length,
+    draft: works.filter((w) => w.status === 'draft').length,
+  }), [works]);
+  const visible = statusFilter === 'all' ? works : works.filter((w) => w.status === statusFilter);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -140,78 +153,13 @@ export default function WorksListPage() {
     );
   }
 
-  const works = (data as Paginated<Work> | undefined)?.items || [];
-  // Demo: inject fake works so the grid is populated visually
-  const demoWorks: Work[] =
-    works.length === 0
-      ? [
-          {
-            id: '1',
-            title: '剑来·前传',
-            genre: 'fantasy',
-            status: 'writing',
-            word_count: 352000,
-            target_word_count: 1000000,
-            logline: '讲述陈平安从骊珠洞天走出后的一段尘缘。',
-            style_keywords: ['热血狂飙', '杀伐果断'],
-            target_audience: ['男频'],
-            settings: {},
-            created_at: '',
-            updated_at: '',
-          },
-          {
-            id: '2',
-            title: '深海回声',
-            genre: 'sci_fi',
-            status: 'writing',
-            word_count: 287000,
-            target_word_count: 600000,
-            logline: '一群海洋生物学家发现深海中传出的不明信号。',
-            style_keywords: ['严谨设定', '反转不断'],
-            target_audience: ['不限'],
-            settings: {},
-            created_at: '',
-            updated_at: '',
-          },
-          {
-            id: '3',
-            title: '长安夜未央',
-            genre: 'historical',
-            status: 'finished',
-            word_count: 421000,
-            target_word_count: 400000,
-            logline: '盛唐之下，街市间的暗流与灯火交织。',
-            style_keywords: ['史诗气魄', '群像推演'],
-            target_audience: ['不限'],
-            settings: {},
-            created_at: '',
-            updated_at: '',
-          },
-          {
-            id: '4',
-            title: '荒岛游戏',
-            genre: 'mystery',
-            status: 'writing',
-            word_count: 184000,
-            target_word_count: 500000,
-            logline: '荒岛求生之中，真相在每个人手中翻牌。',
-            style_keywords: ['智商在线', '反转不断'],
-            target_audience: ['男频'],
-            settings: {},
-            created_at: '',
-            updated_at: '',
-          },
-        ]
-      : works;
-
   return (
     <div className="flex flex-col w-full h-full">
-      {/* Header */}
       <div className="flex items-end justify-between px-8 pt-8 pb-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-display font-bold text-on-surface">作品库</h1>
           <p className="text-body-md text-on-surface-variant">
-            {demoWorks.length} 部作品 · 总计 1,284,532 字 · 最近更新 2 小时前
+            {works.length} 部作品 · 总计 {formatWordCount(totalWords)}
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -227,24 +175,23 @@ export default function WorksListPage() {
         </div>
       </div>
 
-      {/* Filter bar */}
       <div className="flex items-center justify-between px-8 pb-4">
         <div className="flex items-center gap-2">
-          <Button type="primary" shape="round">
-            全部 <span className="font-code-sm ml-1">{demoWorks.length}</span>
-          </Button>
-          <Button type="default" shape="round">
-            连载中 <span className="font-code-sm ml-1">3</span>
-          </Button>
-          <Button type="default" shape="round">
-            已完结 <span className="font-code-sm ml-1">1</span>
-          </Button>
-          <Button type="default" shape="round">
-            草稿 <span className="font-code-sm ml-1">1</span>
-          </Button>
-          <Button type="default" shape="round" icon={<Star size={14} />}>
-            收藏
-          </Button>
+          {([
+            ['all', '全部', counts.all],
+            ['writing', '连载中', counts.writing],
+            ['finished', '已完结', counts.finished],
+            ['draft', '草稿', counts.draft],
+          ] as const).map(([key, label, count]) => (
+            <Button
+              key={key}
+              type={statusFilter === key ? 'primary' : 'default'}
+              shape="round"
+              onClick={() => setStatusFilter(key)}
+            >
+              {label} <span className="font-code-sm ml-1">{count}</span>
+            </Button>
+          ))}
         </div>
         <Button type="text">
           <Filter size={18} />
@@ -253,32 +200,27 @@ export default function WorksListPage() {
         </Button>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-4 gap-4 px-8 pb-8">
-        {demoWorks.map((w) => (
-          <WorkCard key={w.id} work={w} isCurrent={w.id === currentWorkId} />
-        ))}
-        <Link
-          to="/works/new"
-          className="rounded-xl border-2 border-dashed border-outline-variant/60 hover:border-primary hover:bg-primary-fixed/30 flex flex-col items-center justify-center gap-3 min-h-[320px] cursor-pointer transition-colors"
-        >
-          <Plus size={48} className="text-outline" />
-          <span className="text-label-lg text-on-surface">新建作品</span>
-          <span className="text-body-sm text-on-surface-variant">从模板 / 向导 / 空白页</span>
-        </Link>
-      </div>
-
-      {works.length === 0 && (
-        <div className="px-8 pb-4">
-          <div className="text-label-sm text-on-surface-low">
-            <Empty
-              description={
-                <span className="text-body-md text-on-surface-variant">
-                  未从后端拉取到作品 · 已显示演示数据
-                </span>
-              }
-            />
-          </div>
+      {works.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center px-8 pb-16">
+          <Empty description="还没有作品，从向导创建第一部吧">
+            <Link to="/works/new">
+              <Button type="primary" icon={<Plus size={16} />}>新建作品</Button>
+            </Link>
+          </Empty>
+        </div>
+      ) : (
+        <div className="grid grid-cols-4 gap-4 px-8 pb-8">
+          {visible.map((w) => (
+            <WorkCard key={w.id} work={w} isCurrent={w.id === currentWorkId} />
+          ))}
+          <Link
+            to="/works/new"
+            className="rounded-xl border-2 border-dashed border-outline-variant/60 hover:border-primary hover:bg-primary-fixed/30 flex flex-col items-center justify-center gap-3 min-h-[320px] cursor-pointer transition-colors"
+          >
+            <Plus size={48} className="text-outline" />
+            <span className="text-label-lg text-on-surface">新建作品</span>
+            <span className="text-body-sm text-on-surface-variant">打开新建向导</span>
+          </Link>
         </div>
       )}
     </div>

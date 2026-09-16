@@ -66,7 +66,7 @@ def build_plot_user_prompt(
         【一句话简介】{work.logline or _EMPTY}
         【风格关键词】{style_keywords}
         【目标读者】{target_audience}
-        【备注】{work.notes or _EMPTY}
+        【备注】{getattr(work, "notes", None) or _EMPTY}
 
         【任务约束】
         - 总卷数：{total_volumes}

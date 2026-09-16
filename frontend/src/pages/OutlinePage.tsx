@@ -18,12 +18,13 @@ import {
 
 import {
   outlineApi,
-  chaptersApi,
   type OutlineTreeNode,
   type OutlineNodeCreate,
   type OutlineNodeUpdate,
   type PlotChapterExpand,
 } from '@/api';
+import { findFirstChapterNode } from '@/utils/outline';
+import { openOrCreateChapterForNode } from '@/utils/writeChapter';
 
 /** 把多行文本拆成约束列表。 */
 function splitLines(value: unknown): string[] {
@@ -93,17 +94,7 @@ export default function OutlinePage() {
   });
 
   const writeChapterMutation = useMutation({
-    mutationFn: async (node: OutlineTreeNode) => {
-      const listed = await chaptersApi.listByWork(workId!, { page: 1, page_size: 200 });
-      const existing = listed.items.find((c) => c.outline_node_id === node.id);
-      if (existing) return existing;
-      return chaptersApi.create({
-        work_id: workId!,
-        title: node.title,
-        outline_node_id: node.id,
-        summary: node.summary,
-      });
-    },
+    mutationFn: (node: OutlineTreeNode) => openOrCreateChapterForNode(workId!, node),
     onSuccess: (chapter) => navigate(`/editor/${chapter.id}`),
     onError: (err: unknown) => {
       message.error(err instanceof Error ? err.message : '无法打开章节');
@@ -168,6 +159,7 @@ export default function OutlinePage() {
   }
 
   const tree = treeQuery.data?.nodes ?? [];
+  const firstChapter = findFirstChapterNode(tree);
 
   const openCreate = (parent?: OutlineTreeNode) => {
     setEditingNode(null);
@@ -270,9 +262,26 @@ export default function OutlinePage() {
               返回作品
             </Button>
           </Link>
-          <Button type="primary" icon={<Plus size={16} />} onClick={() => openCreate()}>
-            新增卷/章
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="primary"
+              icon={<PenLine size={16} />}
+              loading={writeChapterMutation.isPending}
+              onClick={() => {
+                if (!firstChapter) {
+                  message.warning('请先新增一卷章纲');
+                  openCreate();
+                  return;
+                }
+                writeChapterMutation.mutate(firstChapter);
+              }}
+            >
+              写第 1 章
+            </Button>
+            <Button icon={<Plus size={16} />} onClick={() => openCreate()}>
+              新增卷/章
+            </Button>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -284,7 +293,13 @@ export default function OutlinePage() {
         </div>
 
         {tree.length === 0 ? (
-          <Empty description="尚未创建大纲，点右上角「新增卷/章」开始" />
+          <Empty
+            description="尚未创建大纲。向导创建的作品会自带起步一卷一章；也可手动新增。"
+          >
+            <Button type="primary" icon={<Plus size={16} />} onClick={() => openCreate()}>
+              新增卷/章
+            </Button>
+          </Empty>
         ) : (
           <div className="surface-card p-6 flex flex-col gap-1">
             {tree.map((node) => (
@@ -506,52 +521,54 @@ function OutlineRow({
         <span className="font-code-sm text-on-surface-variant">
           目标 {node.target_word_count.toLocaleString()} 字
         </span>
-        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-          {node.type !== 'volume' && (
-            <Button
-              type="text"
-              shape="circle"
-              size="small"
-              onClick={() => onExpand(node)}
-              icon={<Wand2 size={14} />}
-              title="AI 扩写细纲"
-            />
-          )}
+        <div className="flex items-center gap-1">
           {node.type === 'chapter' && (
             <Button
+              type="link"
+              size="small"
+              icon={<PenLine size={14} />}
+              onClick={() => onWriteChapter(node)}
+            >
+              写本章
+            </Button>
+          )}
+          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+            {node.type !== 'volume' && (
+              <Button
+                type="text"
+                shape="circle"
+                size="small"
+                onClick={() => onExpand(node)}
+                icon={<Wand2 size={14} />}
+                title="AI 扩写细纲"
+              />
+            )}
+            <Button
               type="text"
               shape="circle"
               size="small"
-              onClick={() => onWriteChapter(node)}
-              icon={<PenLine size={14} />}
-              title="写本章（不自动生成正文）"
+              onClick={() => onEdit(node)}
+              icon={<Pencil size={14} />}
+              title="编辑约束锁"
             />
-          )}
-          <Button
-            type="text"
-            shape="circle"
-            size="small"
-            onClick={() => onEdit(node)}
-            icon={<Pencil size={14} />}
-            title="编辑约束锁"
-          />
-          <Button
-            type="text"
-            shape="circle"
-            size="small"
-            onClick={() => onAddChild(node)}
-            icon={<Plus size={14} />}
-            title="新增子节点"
-          />
-          <Button
-            type="text"
-            shape="circle"
-            size="small"
-            danger
-            onClick={() => onDelete(node.id)}
-            icon={<Trash2 size={14} />}
-            title="删除"
-          />
+            <Button
+              type="text"
+              shape="circle"
+              size="small"
+              onClick={() => onAddChild(node)}
+              icon={<Plus size={14} />}
+              title="新增子节点"
+            />
+            <Button
+              type="text"
+              shape="circle"
+              size="small"
+              danger
+              onClick={() => onDelete(node.id)}
+              icon={<Trash2 size={14} />}
+              title="删除"
+            />
+          </div>
         </div>
       </div>
       {hasChildren && isExpanded && (

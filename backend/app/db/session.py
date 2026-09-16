@@ -2,6 +2,7 @@
 import logging
 from pathlib import Path
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
@@ -13,13 +14,31 @@ db_path = settings.database_url.replace("sqlite+aiosqlite:///", "").replace("sql
 if db_path and not db_path.startswith(":"):  # 跳过内存数据库
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
-# 创建异步引擎
-engine = create_async_engine(
-    settings.database_url,
-    echo=settings.app_env == "development",
-    pool_pre_ping=True,
-    future=True,
-)
+_IS_SQLITE = settings.database_url.startswith("sqlite")
+_engine_kwargs: dict = {
+    "echo": settings.app_env == "development",
+    "pool_pre_ping": True,
+    "future": True,
+}
+if _IS_SQLITE:
+    # timeout: 等锁最久 30s,避免生成任务节流写库时 PATCH 立刻 database is locked
+    _engine_kwargs["connect_args"] = {"timeout": 30.0}
+
+engine = create_async_engine(settings.database_url, **_engine_kwargs)
+
+
+if _IS_SQLITE:
+    @event.listens_for(engine.sync_engine, "connect")
+    def _sqlite_on_connect(dbapi_connection, _connection_record) -> None:
+        """WAL + busy_timeout: 编辑器自动保存与 WS 落库可以交错,不再互相卡死。"""
+        try:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.close()
+        except Exception as e:  # pragma: no cover - 连接级兜底
+            logger.warning("SQLite PRAGMA 设置失败: %s", e)
 
 # Session 工厂
 async_session_factory = async_sessionmaker(

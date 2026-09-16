@@ -7,3 +7,19 @@ export function formatWordCount(count: number): string {
   }
   return `${count.toLocaleString()}字`;
 }
+
+/** 把 ISO 时间显示成相对时间。 */
+export function formatRelativeTime(iso: string): string {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '';
+  const diff = Date.now() - t;
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return '刚刚';
+  if (min < 60) return `${min} 分钟前`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour} 小时前`;
+  const day = Math.floor(hour / 24);
+  if (day < 30) return `${day} 天前`;
+  return new Date(iso).toLocaleDateString('zh-CN');
+}

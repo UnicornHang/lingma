@@ -102,3 +102,109 @@ async def test_list_with_pagination(client):
     r2 = await client.get("/api/v1/works/?page=2&page_size=2")
     data2 = r2.json()
     assert len(data2["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_work_without_seed_skips_outline(client):
+    """纯 API 创建不带 seed 时不自动写大纲，保持向后兼容。"""
+    r = await client.post(
+        "/api/v1/works/",
+        json={"title": "空白稿", "genre": "other", "target_word_count": 100_000},
+    )
+    assert r.status_code == 201
+    work_id = r.json()["id"]
+    tree = await client.get(f"/api/v1/works/{work_id}/outline/tree")
+    assert tree.status_code == 200
+    assert tree.json()["nodes"] == []
+
+
+@pytest.mark.asyncio
+async def test_create_work_with_seed_bootstraps_outline_world_character(client):
+    """向导 seed 写入 settings，并补一卷一章、世界书、主角卡。"""
+    payload = {
+        "title": "新书",
+        "genre": "fantasy",
+        "logline": "少年入世",
+        "target_word_count": 500_000,
+        "style_keywords": ["热血"],
+        "target_audience": ["男频"],
+        "seed": {
+            "pen_name": "测试笔名",
+            "volume1_name": "少年游",
+            "chapter_target_words": 3500,
+            "pace": "fast",
+            "reader_portrait": "15-35 岁",
+            "core_conflict": "守护珍视的人",
+            "protagonist": "陈平安",
+            "origin_setting": "骊珠洞天",
+            "opening_beats": ["楔子：不识愁", "第一章：远行"],
+        },
+    }
+    r = await client.post("/api/v1/works/", json=payload)
+    assert r.status_code == 201, r.text
+    work = r.json()
+    work_id = work["id"]
+    assert work["settings"]["pen_name"] == "测试笔名"
+    assert work["settings"]["pace"] == "fast"
+
+    tree = await client.get(f"/api/v1/works/{work_id}/outline/tree")
+    assert tree.status_code == 200
+    nodes = tree.json()["nodes"]
+    assert len(nodes) == 1
+    assert nodes[0]["title"] == "少年游"
+    assert nodes[0]["type"] == "volume"
+    chapters = nodes[0]["children"]
+    assert len(chapters) == 1
+    assert chapters[0]["type"] == "chapter"
+    assert chapters[0]["title"] == "楔子：不识愁"
+    assert chapters[0]["beats"] == ["楔子：不识愁", "第一章：远行"]
+    assert chapters[0]["summary"] == "守护珍视的人"
+    assert chapters[0]["target_word_count"] == 3500
+
+    chars = await client.get(f"/api/v1/works/{work_id}/characters")
+    assert chars.status_code == 200
+    items = chars.json()["items"]
+    assert len(items) == 1
+    assert items[0]["name"] == "陈平安"
+    assert items[0]["role"] == "protagonist"
+
+    world = await client.get(f"/api/v1/works/{work_id}/world")
+    assert world.status_code == 200
+    assert "骊珠洞天" in world.json()["raw_text"]
+    assert "守护珍视的人" in world.json()["raw_text"]
+
+
+@pytest.mark.asyncio
+async def test_create_work_with_volumes_skips_starter_outline(client):
+    """带 AI 大纲时只写入勾选卷，不再额外插「第一卷」。"""
+    payload = {
+        "title": "有大纲的书",
+        "genre": "urban",
+        "logline": "都市线",
+        "target_word_count": 200_000,
+        "seed": {"volume1_name": "不应出现"},
+        "volumes": [
+            {
+                "vol_no": 1,
+                "vol_title": "风起",
+                "summary": "开局",
+                "chapters": [
+                    {
+                        "title": "第1章 相遇",
+                        "summary": "主角遇见关键人",
+                        "target_word_count": 2800,
+                        "beats": [{"title": "相遇", "summary": ""}],
+                    }
+                ],
+            }
+        ],
+    }
+    r = await client.post("/api/v1/works/", json=payload)
+    assert r.status_code == 201, r.text
+    work_id = r.json()["id"]
+    tree = await client.get(f"/api/v1/works/{work_id}/outline/tree")
+    nodes = tree.json()["nodes"]
+    assert len(nodes) == 1
+    assert nodes[0]["title"] == "风起"
+    assert nodes[0]["children"][0]["title"] == "第1章 相遇"
+    assert nodes[0]["children"][0]["summary"] == "主角遇见关键人"
