@@ -113,6 +113,12 @@ export default function NewWorkWizardPage() {
   const [aiTotalVolumes, setAiTotalVolumes] = useState(3);
   const [aiTargetChapters, setAiTargetChapters] = useState<number | null>(null);
   const [aiHint, setAiHint] = useState('');
+  const [aiStreamChars, setAiStreamChars] = useState(0);
+  const [aiGeneratingVol, setAiGeneratingVol] = useState<{
+    vol_no: number;
+    total: number;
+    attempt?: number;
+  } | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -164,29 +170,66 @@ export default function NewWorkWizardPage() {
   // AI 大纲预览
   const aiPreviewMutation = useMutation({
     mutationFn: () =>
-      outlineApi.aiPreview({
-        work_preview: {
-          title: title.trim() || '未命名作品',
-          genre: primaryGenre,
-          logline: logline.trim(),
-          style_keywords: [...keywords],
-          target_audience: audienceArr,
-          target_word_count: targetWordCount,
+      outlineApi.aiPreviewStream(
+        {
+          work_preview: {
+            title: title.trim() || '未命名作品',
+            genre: primaryGenre,
+            logline: logline.trim(),
+            style_keywords: [...keywords],
+            target_audience: audienceArr,
+            target_word_count: targetWordCount,
+          },
+          total_volumes: aiTotalVolumes,
+          target_chapter_count: aiTargetChapters,
+          extra_hint: seedHint ? seedHint.slice(0, 4000) : undefined,
         },
-        total_volumes: aiTotalVolumes,
-        target_chapter_count: aiTargetChapters,
-        extra_hint: seedHint ? seedHint.slice(0, 2000) : undefined,
-      }),
+        {
+          onStarted: () => {
+            setAiStreamChars(0);
+            setAiVolumes([]);
+            setAiChecked(new Set());
+            setAiGeneratingVol(null);
+          },
+          onVolumeStarted: (data) => {
+            setAiStreamChars(0);
+            setAiGeneratingVol({ vol_no: data.vol_no, total: data.total });
+          },
+          onVolumeRetry: (data) => {
+            setAiStreamChars(0);
+            setAiGeneratingVol({
+              vol_no: data.vol_no,
+              total: data.total ?? data.vol_no,
+              attempt: data.attempt,
+            });
+          },
+          onVolume: (vol) => {
+            setAiVolumes((prev) =>
+              [...prev.filter((v) => v.vol_no !== vol.vol_no), vol].sort((a, b) => a.vol_no - b.vol_no),
+            );
+            setAiChecked((prev) => new Set(prev).add(vol.vol_no));
+          },
+          onDelta: (chunk) => setAiStreamChars((n) => n + chunk.length),
+        },
+      ),
     onSuccess: (resp) => {
       if (!resp.volumes.length) {
-        message.warning('AI 未能生成有效大纲（输出格式异常），请重试');
+        message.warning('模型把篇幅花在思考上了，大纲结构没解析出来，请再点一次「生成」');
         return;
       }
       setAiVolumes(resp.volumes);
       setAiChecked(new Set(resp.volumes.map((v) => v.vol_no)));
-      message.success(`已生成 ${resp.volumes.length} 卷大纲`);
+      setAiGeneratingVol(null);
+      if (resp.volumes.length < aiTotalVolumes) {
+        message.warning(
+          `已连续生成 ${resp.volumes.length} / ${aiTotalVolumes} 卷（后面的卷未继续，避免跳号），可再生成或先用这几卷`,
+        );
+      } else {
+        message.success(`已生成 ${resp.volumes.length} 卷大纲`);
+      }
     },
     onError: (err: unknown) => {
+      setAiGeneratingVol(null);
       message.error(err instanceof Error ? err.message : 'AI 推荐失败');
     },
   });
@@ -497,6 +540,8 @@ export default function NewWorkWizardPage() {
               checked={aiChecked}
               onToggle={toggleAiVolume}
               loading={aiPreviewMutation.isPending}
+              streamChars={aiStreamChars}
+              generatingVol={aiGeneratingVol}
               onGenerate={() => aiPreviewMutation.mutate()}
               error={aiPreviewMutation.error ? (aiPreviewMutation.error as Error).message : null}
             />
@@ -745,6 +790,8 @@ interface StepAiOutlineProps {
   checked: Set<number>;
   onToggle: (volNo: number) => void;
   loading: boolean;
+  streamChars?: number;
+  generatingVol?: { vol_no: number; total: number; attempt?: number } | null;
   onGenerate: () => void;
   error: string | null;
 }
@@ -754,7 +801,7 @@ function StepAiOutline({
   targetChapters, onTargetChapters,
   hint, onHint,
   volumes, checked, onToggle,
-  loading, onGenerate, error,
+  loading, streamChars = 0, generatingVol = null, onGenerate, error,
 }: StepAiOutlineProps) {
   return (
     <div className="flex flex-col gap-6 max-w-4xl">
@@ -811,10 +858,23 @@ function StepAiOutline({
             {volumes.length ? '重新生成' : '生成 AI 大纲'}
           </Button>
         </div>
+        {loading && (
+          <div className="col-span-2 text-body-sm text-on-surface-variant">
+            {generatingVol
+              ? `正在生成第 ${generatingVol.vol_no}/${generatingVol.total} 卷${
+                  generatingVol.attempt && generatingVol.attempt > 1
+                    ? `（第 ${generatingVol.attempt} 次尝试）`
+                    : ''
+                }${streamChars > 0 ? `，已 ${streamChars} 字` : '，模型思考中'}`
+              : streamChars > 0
+                ? `正在接收大纲… 已 ${streamChars} 字`
+                : '模型思考中，连接会保持心跳，请稍候'}
+          </div>
+        )}
         {error && <div className="col-span-2 text-body-sm text-error">生成失败:{error}</div>}
       </div>
 
-      <Spin spinning={loading} tip="AI 正在设计大纲...">
+      <Spin spinning={loading && volumes.length === 0} tip="AI 正在按卷设计大纲...">
         {volumes.length === 0 ? (
           <Empty description={loading ? '' : '尚未生成;点击「生成 AI 大纲」开始'} />
         ) : (
@@ -836,20 +896,19 @@ function StepAiOutline({
                     <span className="ml-2 text-body-xs text-on-surface-variant">第 {v.vol_no} 卷 · {v.chapters.length} 章</span>
                   </Checkbox>
                 </div>
-                {v.summary && <div className="text-body-sm text-on-surface-variant">{v.summary}</div>}
+                {v.summary && (
+                  <div className="text-body-sm text-on-surface-variant whitespace-pre-wrap">{v.summary}</div>
+                )}
                 <div className="flex flex-col gap-1 pl-7">
-                  {v.chapters.slice(0, 5).map((c, i) => (
+                  {v.chapters.map((c, i) => (
                     <div key={i} className="text-body-sm text-on-surface-variant flex items-start gap-2">
                       <span className="text-outline">·</span>
-                      <div className="flex-1">
+                      <div className="flex-1 whitespace-pre-wrap">
                         <span className="font-code-sm text-on-surface">{c.title}</span>
                         {c.summary && <span className="ml-2">{c.summary}</span>}
                       </div>
                     </div>
                   ))}
-                  {v.chapters.length > 5 && (
-                    <div className="text-body-xs text-on-surface-variant">… 等共 {v.chapters.length} 章</div>
-                  )}
                 </div>
               </div>
             ))}

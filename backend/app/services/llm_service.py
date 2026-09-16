@@ -279,17 +279,32 @@ class LLMService:
             ) from e
         return AsyncOpenAI(api_key=cfg.api_key or "sk-no-auth", base_url=cfg.base_url or None)
 
+    def _completion_kwargs(
+        self,
+        cfg: ProviderConfig,
+        req: LLMRequest,
+        *,
+        stream: bool,
+    ) -> dict[str, Any]:
+        """拼出 chat.completions.create 参数；req.extra 透传到 extra_body。"""
+        kwargs: dict[str, Any] = {
+            "model": cfg.model or req.model,
+            "messages": [{"role": m.role, "content": m.content} for m in req.messages],
+            "temperature": req.temperature,
+            "max_tokens": req.max_tokens,
+            "stream": stream,
+        }
+        if req.extra:
+            kwargs["extra_body"] = req.extra
+        if stream and cfg.provider != Provider.ANTHROPIC:
+            kwargs["stream_options"] = {"include_usage": True}
+        return kwargs
+
     async def _real_chat(self, cfg: ProviderConfig, req: LLMRequest) -> LLMResponse:
         client = self._build_client(cfg)
-        msgs = [{"role": m.role, "content": m.content} for m in req.messages]
         try:
             resp = await client.chat.completions.create(
-                # 优先用用户在 APIConfig 里配置的模型;req.model 仅作 mock 兜底
-                model=cfg.model or req.model,
-                messages=msgs,
-                temperature=req.temperature,
-                max_tokens=req.max_tokens,
-                stream=False,
+                **self._completion_kwargs(cfg, req, stream=False),
             )
         except Exception as e:
             logger.error("LLM 调用失败: %s", e, exc_info=True)
@@ -321,16 +336,9 @@ class LLMService:
         usage 仅在流结束时由最后一个 chunk 携带（部分 provider）。
         """
         client = self._build_client(cfg)
-        msgs = [{"role": m.role, "content": m.content} for m in req.messages]
         try:
             stream = await client.chat.completions.create(
-                # 优先用用户在 APIConfig 里配置的模型;req.model 仅作 mock 兜底
-                model=cfg.model or req.model,
-                messages=msgs,
-                temperature=req.temperature,
-                max_tokens=req.max_tokens,
-                stream=True,
-                stream_options={"include_usage": True} if cfg.provider != Provider.ANTHROPIC else None,
+                **self._completion_kwargs(cfg, req, stream=True),
             )
             async for chunk in stream:
                 # 最后一个 chunk 可能只携带 usage，无 delta

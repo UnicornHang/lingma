@@ -185,7 +185,7 @@ class PlotOutlineRequest(BaseModel):
 
     total_volumes: int = Field(default=3, ge=1, le=10)
     target_chapter_count: int | None = Field(default=None, ge=1, le=200)
-    extra_hint: str | None = Field(default=None, max_length=2000)
+    extra_hint: str | None = Field(default=None, max_length=4000)
 
 
 class PlotOutlineResponse(BaseModel):
@@ -221,6 +221,8 @@ class PlotChapterExpand(BaseModel):
         """兼容 LLM 把节拍写成对象列表。"""
         if not value:
             return []
+        if isinstance(value, str):
+            return [p.strip() for p in value.replace("；", "\n").split("\n") if p.strip()]
         out: list[str] = []
         for item in value:
             if isinstance(item, str) and item.strip():
@@ -230,6 +232,42 @@ class PlotChapterExpand(BaseModel):
                 if text:
                     out.append(text)
         return out
+
+    @field_validator("characters_involved", mode="before")
+    @classmethod
+    def _coerce_characters(cls, value):
+        """兼容角色写成对象或一段中文。"""
+        if not value:
+            return []
+        if isinstance(value, str):
+            return [p.strip() for p in value.replace("、", ",").split(",") if p.strip()]
+        out: list[str] = []
+        for item in value:
+            if isinstance(item, str) and item.strip():
+                out.append(item.strip())
+            elif isinstance(item, dict):
+                name = str(item.get("name") or item.get("title") or "").strip()
+                if name:
+                    out.append(name)
+        return out
+
+    @field_validator("target_word_count", mode="before")
+    @classmethod
+    def _coerce_word_count(cls, value):
+        """非法字数回落到 3000。"""
+        try:
+            n = int(value)
+        except (TypeError, ValueError):
+            return 3000
+        if n < 100:
+            return 3000
+        return min(n, 20_000)
+
+    @field_validator("write_constraints", mode="before")
+    @classmethod
+    def _coerce_constraints(cls, value):
+        """缺省或脏对象按空约束锁处理。"""
+        return value or {}
 
 
 class PlotChapterExpandRequest(BaseModel):

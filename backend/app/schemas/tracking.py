@@ -2,11 +2,13 @@
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class WriteConstraints(BaseModel):
     """本章约束锁：项目事实优先于任何写作技法。"""
+
+    model_config = ConfigDict(extra="ignore")
 
     word_count_min: int | None = Field(None, ge=100, le=20_000)
     word_count_max: int | None = Field(None, ge=100, le=20_000)
@@ -15,6 +17,46 @@ class WriteConstraints(BaseModel):
     time_anchor: str = Field(default="", max_length=200)
     stop_point: str = Field(default="", max_length=200)
     end_hook_debt: str = Field(default="", max_length=500)
+
+    @field_validator("word_count_min", "word_count_max", mode="before")
+    @classmethod
+    def _empty_word_count(cls, value):
+        """LLM 常给 0 / 空串，按未填写处理。"""
+        if value in (None, "", 0, "0", "null", "None"):
+            return None
+        return value
+
+    @field_validator("must_happen", "must_not_happen", mode="before")
+    @classmethod
+    def _coerce_constraint_list(cls, value):
+        """兼容把必须/禁止写成一段中文。"""
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            return [p.strip() for p in value.replace("；", "\n").split("\n") if p.strip()]
+        if isinstance(value, list):
+            out: list[str] = []
+            for item in value:
+                if isinstance(item, str) and item.strip():
+                    out.append(item.strip())
+                elif isinstance(item, dict):
+                    text = str(item.get("title") or item.get("text") or "").strip()
+                    if text:
+                        out.append(text)
+            return out
+        return []
+
+    @field_validator("time_anchor", "stop_point", mode="before")
+    @classmethod
+    def _clip_short_text(cls, value):
+        """过长锚点截断，避免整份细纲校验失败。"""
+        return str(value or "")[:200]
+
+    @field_validator("end_hook_debt", mode="before")
+    @classmethod
+    def _clip_hook(cls, value):
+        """章尾新债截断到 schema 上限。"""
+        return str(value or "")[:500]
 
 
 class ForeshadowItem(BaseModel):

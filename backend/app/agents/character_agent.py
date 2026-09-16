@@ -37,29 +37,24 @@ logger = logging.getLogger(__name__)
 
 # 用于在 LLM 输出偶尔包了一层 markdown fence 时容错抽取
 _JSON_FENCE_RE = re.compile(r"```(?:json|JSON)?\s*([\s\S]*?)```", re.DOTALL)
+_THINK_BLOCK_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
 
 
-def _extract_json_object(raw: str) -> str | None:
-    """从 LLM 输出中尽力抽取 JSON object。
+def _strip_llm_think(raw: str) -> str:
+    """去掉 MiniMax 等模型的 <think> 思维链，避免把思考稿当成 JSON。"""
+    text = _THINK_BLOCK_RE.sub("", raw)
+    leftover = re.search(r"<think>", text, re.IGNORECASE)
+    if leftover:
+        rest = text[leftover.end() :]
+        vol_at = rest.find('{"volumes"')
+        brace_at = rest.find("{")
+        cut = vol_at if vol_at >= 0 else brace_at
+        text = rest[cut:] if cut >= 0 else text[: leftover.start()]
+    return text.strip()
 
-    处理:
-    - 开头/结尾的说明文字
-    - markdown fence ```json ... ```
-    - 首个大括号匹配的 JSON object
-    """
-    if not raw:
-        return None
-    text = raw.strip()
 
-    # 1) 命中 markdown fence:取第一个 fence 块
-    m = _JSON_FENCE_RE.search(text)
-    if m:
-        return m.group(1).strip()
-
-    # 2) 寻找首尾大括号包围的 JSON object
-    start = text.find("{")
-    if start < 0:
-        return None
+def _matching_brace_end(text: str, start: int) -> int | None:
+    """返回与 text[start]=='{' 配对的 '}' 下标；截断或不平衡则 None。"""
     depth = 0
     in_string = False
     escape = False
@@ -81,8 +76,50 @@ def _extract_json_object(raw: str) -> str | None:
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return text[start : i + 1]
+                return i
     return None
+
+
+def _extract_json_object(raw: str) -> str | None:
+    """从 LLM 输出中尽力抽取 JSON object。
+
+    处理:
+    - <think> 思维链
+    - 开头/结尾的说明文字
+    - markdown fence ```json ... ```
+    - 多个大括号对象时取最长的一份（优先含 volumes）
+    - 顶层 JSON 被截断时仍返回从 { 起的原文，供上层 salvage
+    """
+    if not raw:
+        return None
+    text = _strip_llm_think(raw)
+    if not text:
+        return None
+
+    m = _JSON_FENCE_RE.search(text)
+    if m:
+        text = m.group(1).strip()
+
+    candidates: list[str] = []
+    search_from = 0
+    while True:
+        start = text.find("{", search_from)
+        if start < 0:
+            break
+        end = _matching_brace_end(text, start)
+        if end is None:
+            dangling = text[start:]
+            if '"volumes"' in dangling[:800] or dangling.lstrip().startswith("{"):
+                candidates.append(dangling)
+            break
+        candidates.append(text[start : end + 1])
+        search_from = start + 1
+
+    if not candidates:
+        return None
+    with_volumes = [c for c in candidates if '"volumes"' in c[:2000]]
+    pool = with_volumes or candidates
+    return max(pool, key=len)
 
 
 class CharacterAgent(BaseAgent):

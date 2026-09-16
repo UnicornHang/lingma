@@ -114,6 +114,21 @@ export interface PlotChapterExpandResponse {
   raw_content?: string;
 }
 
+export interface PlotOutlinePreviewPayload {
+  work_preview: {
+    title: string;
+    genre?: string;
+    logline?: string;
+    style_keywords?: string[];
+    target_audience?: string[];
+    notes?: string;
+    target_word_count?: number;
+  };
+  total_volumes?: number;
+  target_chapter_count?: number | null;
+  extra_hint?: string;
+}
+
 export const outlineApi = {
   list: (workId: string) => http.get<{ total: number; items: OutlineNode[] }>(`/works/${workId}/outline`),
 
@@ -132,23 +147,124 @@ export const outlineApi = {
       timeout: 180_000,
     }),
 
-  aiPreview: (payload: {
-    work_preview: {
-      title: string;
-      genre?: string;
-      logline?: string;
-      style_keywords?: string[];
-      target_audience?: string[];
-      notes?: string;
-      target_word_count?: number;
-    };
-    total_volumes?: number;
-    target_chapter_count?: number | null;
-    extra_hint?: string;
-  }) =>
+  aiPreview: (payload: PlotOutlinePreviewPayload) =>
     http.post<PlotOutlineResponse>('/outline/ai-preview', payload, {
       timeout: 180_000,
     }),
+
+  /**
+   * SSE 预览大纲。思考阶段靠服务端 keepalive 保活，不受 axios 超时限制。
+   * 事件：started → (volume_started → llm_delta* → volume)* → done | error
+   */
+  aiPreviewStream: async (
+    payload: PlotOutlinePreviewPayload,
+    callbacks: {
+      onStarted?: (data: { model: string; chapter_count: number; total_volumes?: number }) => void;
+      onVolumeStarted?: (data: { vol_no: number; total: number; chapter_count: number }) => void;
+      onVolumeRetry?: (data: {
+        vol_no: number;
+        attempt: number;
+        total_attempts: number;
+        total?: number;
+      }) => void;
+      onVolume?: (volume: PlotVolume) => void;
+      onDelta?: (content: string) => void;
+      onDone?: (data: PlotOutlineResponse) => void;
+      onError?: (message: string) => void;
+    } = {},
+  ): Promise<PlotOutlineResponse> => {
+    const API_BASE = (import.meta.env.VITE_API_BASE || '/api/v1') as string;
+    const res = await fetch(`${API_BASE}/outline/ai-preview/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok || !res.body) {
+      throw new Error(`SSE 请求失败: HTTP ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let donePayload: PlotOutlineResponse | null = null;
+    let streamError: string | null = null;
+
+    const flushEvent = (raw: string): void => {
+      const eventLines: string[] = [];
+      const dataLines: string[] = [];
+      for (const line of raw.split('\n')) {
+        if (line.startsWith('event:')) eventLines.push(line.slice(6).trim());
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+      }
+      if (eventLines.length === 0) return;
+      const eventName = eventLines.join(' ');
+      let parsed: Record<string, unknown> = {};
+      const dataStr = dataLines.join('\n');
+      if (dataStr) {
+        try {
+          parsed = JSON.parse(dataStr) as Record<string, unknown>;
+        } catch {
+          parsed = { _raw: dataStr };
+        }
+      }
+      switch (eventName) {
+        case 'started':
+          callbacks.onStarted?.(parsed as { model: string; chapter_count: number; total_volumes?: number });
+          break;
+        case 'volume_started':
+          callbacks.onVolumeStarted?.(parsed as { vol_no: number; total: number; chapter_count: number });
+          break;
+        case 'volume_retry':
+          callbacks.onVolumeRetry?.(
+            parsed as {
+              vol_no: number;
+              attempt: number;
+              total_attempts: number;
+              total?: number;
+            },
+          );
+          break;
+        case 'volume':
+          if (parsed.volume && typeof parsed.volume === 'object') {
+            callbacks.onVolume?.(parsed.volume as PlotVolume);
+          }
+          break;
+        case 'llm_delta':
+          callbacks.onDelta?.(String(parsed.content ?? ''));
+          break;
+        case 'done':
+          donePayload = parsed as unknown as PlotOutlineResponse;
+          callbacks.onDone?.(donePayload);
+          break;
+        case 'error':
+          streamError = String(parsed.error ?? '大纲生成失败');
+          callbacks.onError?.(streamError);
+          break;
+        default:
+          break;
+      }
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+      for (const part of parts) {
+        if (part.trim()) flushEvent(part);
+      }
+    }
+    if (buffer.trim()) flushEvent(buffer);
+
+    if (streamError) {
+      throw new Error(streamError);
+    }
+    if (!donePayload) {
+      throw new Error('SSE 流未收到 done 事件');
+    }
+    return donePayload;
+  },
 
   /** PlotAgent 扩写本章细纲；返回建议，需再 update 落库 */
   aiExpand: (nodeId: string, payload?: PlotChapterExpandRequest) =>
