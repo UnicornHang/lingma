@@ -35,6 +35,7 @@ import { TrackingContinuityPanel } from '@/components/Tracking/TrackingContinuit
 import { outlineApi, type OutlineTreeNode } from '@/api/outline';
 import { useGenerationStream } from '@/hooks/useGenerationStream';
 import { RichEditor, type RichEditorHandle } from '@/components/RichEditor';
+import { normalizeNovelParagraphs } from '@/utils/plainToTipTap';
 
 const TABS = ['分析', '批注', '角色', '一致性', '伏笔'];
 
@@ -275,7 +276,7 @@ export default function ChapterEditorPage() {
         // [P2 修复] tokens 预算与目标字数对齐:目标 × 2(与后端 _resolve_max_tokens 一致)
         // 修复前硬编码 1500 → 用户报告"目标 1500 字但实际 888 字"
         max_tokens: currentOutlineTarget * 2,
-        temperature: 0.85,
+        temperature: 0.72,
         auto_polish: true,
         auto_rewrite: false,
         auto_critic: true,
@@ -293,12 +294,15 @@ export default function ChapterEditorPage() {
   useEffect(() => {
     if (generation.status !== 'done') return;
     const cleaned = generation.content;
-    if (cleaned && editorRef.current) {
-      // 只在编辑器当前内容与 cleaned 不一致时才覆写(避免无谓抖动)
-      const currentText = editorRef.current.getText();
-      if (currentText.length !== cleaned.length) {
-        editorRef.current.setContent(cleaned);
-      }
+    const editor = editorRef.current;
+    if (cleaned && editor) {
+      // 续写 done.content 只含新增段，不能覆盖已有正文。用编辑器现文重切段。
+      const currentText = editor.getText();
+      const source = currentText.trim() ? currentText : cleaned;
+      editor.setContent(normalizeNovelParagraphs(source));
+      const json = editor.getJSON();
+      if (json) setContent(json);
+      setPlainText(editor.getText());
     }
     setDirty(true);
     setTaskId(null);
@@ -384,7 +388,7 @@ export default function ChapterEditorPage() {
   }, [plainText, message]);
 
   const handlePolish = useCallback(async () => {
-    const text = plainText.trim();
+    const text = (editorPolishedText || plainText).trim();
     if (!text) return;
     setEditorLoading(true);
     setEditorFindings([]);
@@ -427,8 +431,18 @@ export default function ChapterEditorPage() {
             setEditorPolishedText(data.polished_text);
             setEditorSummary(data.summary);
             setEditorPhase('done');
+            if (data.remaining_findings) {
+              setEditorFindings(data.remaining_findings);
+              setEditorBlockingCount(data.remaining_blocking_count ?? 0);
+              setEditorAdvisoryCount(data.remaining_advisory_count ?? 0);
+            }
+            const remainingBlocking = data.remaining_blocking_count ?? 0;
             if (data.rewrites.length === 0 && data.summary.includes('LLM')) {
               message.warning('已生成检测报告,但 LLM 改写未产出');
+            } else if (remainingBlocking > 0) {
+              message.warning(
+                `已改写,仍有 ${remainingBlocking} 处阻断。可点「再次重写」或先应用到正文`,
+              );
             } else {
               message.success(`已生成 ${data.rewrites.length} 条改写建议`);
             }
@@ -453,17 +467,17 @@ export default function ChapterEditorPage() {
     } finally {
       setEditorLoading(false);
     }
-  }, [plainText, chapter?.work_id, message]);
+  }, [plainText, editorPolishedText, chapter?.work_id, message]);
 
   /** 把 polished_text 应用到正文(全量替换) */
   const handleApplyPolish = useCallback(() => {
     if (!editorPolishedText) return;
-    // 通过编辑器句柄更新(整体替换为纯文本)
-    editorRef.current?.setContent(editorPolishedText);
-    // 标记 dirty,触发自动保存
+    const formatted = normalizeNovelParagraphs(editorPolishedText);
+    editorRef.current?.setContent(formatted);
+    const json = editorRef.current?.getJSON();
+    if (json) setContent(json);
     setDirty(true);
-    // 同步本地 plainText
-    setPlainText(editorPolishedText);
+    setPlainText(editorRef.current?.getText() ?? formatted);
     setEditorModalOpen(false);
     message.success('已应用润色结果到正文,请稍候自动保存');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -567,9 +581,12 @@ export default function ChapterEditorPage() {
   const handleApplySelectionPolish = useCallback(() => {
     if (!selectionPolishRange || !selectionPolishedText) return;
     const { from, to } = selectionPolishRange;
-    const ok = editorRef.current?.replaceRange(from, to, selectionPolishedText);
+    const formatted = normalizeNovelParagraphs(selectionPolishedText);
+    const ok = editorRef.current?.replaceRange(from, to, formatted);
     if (ok) {
       setDirty(true);
+      const json = editorRef.current?.getJSON();
+      if (json) setContent(json);
       setPlainText(editorRef.current?.getText() ?? '');
       setSelectionPolishOpen(false);
       setSelection(null);
@@ -585,19 +602,23 @@ export default function ChapterEditorPage() {
       message.warning('当前光标不在自然段内');
       return;
     }
-    // 把选区 state 设到段落,后续走 handleSelectionAnalyze 的逻辑
-    setSelection(para);
+    // 墙式长段时只检光标附近，避免「本段」变成整章
+    const windowed =
+      para.text.length > 800 ? editorRef.current?.getCursorWindow(240) : null;
+    const target = windowed?.text.trim() ? windowed : para;
+    setSelection(target);
     setSelectionPolishLoading(true);
-    setSelectionPolishRange({ from: para.from, to: para.to });
+    setSelectionPolishRange({ from: target.from, to: target.to });
     setSelectionPolishOpen(true);
     setSelectionPolishFindings([]);
     setSelectionPolishRewrites([]);
     setSelectionPolishedText('');
     try {
-      const result = await chaptersApi.analyzeAIPatterns(para.text);
+      const result = await chaptersApi.analyzeAIPatterns(target.text);
       setSelectionPolishFindings(result.findings);
+      const scope = windowed?.text.trim() ? '光标附近' : '本段';
       setSelectionPolishSummary(
-        `本段共 ${result.findings.length} 处问题(${result.blocking_count} 阻断 / ${result.advisory_count} 建议)`,
+        `${scope}共 ${result.findings.length} 处问题(${result.blocking_count} 阻断 / ${result.advisory_count} 建议)`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1331,14 +1352,25 @@ export default function ChapterEditorPage() {
                 让 AI 重写
               </Button>
             ) : (
-              <Button
-                type="primary"
-                icon={<CheckCircle2 size={14} />}
-                onClick={handleApplyPolish}
-                disabled={!editorPolishedText || editorPolishedText === plainText.trim()}
-              >
-                应用到正文
-              </Button>
+              <>
+                {editorFindings.length > 0 && (
+                  <Button
+                    icon={<Sparkles size={14} />}
+                    loading={editorLoading}
+                    onClick={handlePolish}
+                  >
+                    再次重写
+                  </Button>
+                )}
+                <Button
+                  type="primary"
+                  icon={<CheckCircle2 size={14} />}
+                  onClick={handleApplyPolish}
+                  disabled={!editorPolishedText || editorPolishedText === plainText.trim()}
+                >
+                  应用到正文
+                </Button>
+              </>
             )}
           </Space>
         }
@@ -1358,13 +1390,21 @@ export default function ChapterEditorPage() {
           }
         >
           <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-2">
-            {editorFindings.length === 0 && !editorLoading && (
+            {editorFindings.length === 0 && !editorLoading && !editorPolishedText && (
               <div className="p-4 rounded-lg bg-tertiary-container/30 border-l-4 border-tertiary">
                 <p className="text-body-sm text-on-surface">
                   ✓ 未检测到典型 AI 痕迹,正文看起来比较自然。
                 </p>
                 <p className="text-body-xs text-on-surface-variant mt-1">
                   痕迹检测是确定性规则，可标「阻断」。润色走模型改写读感，不承诺再次通过检测器。
+                </p>
+              </div>
+            )}
+
+            {editorFindings.length === 0 && editorPolishedText && (
+              <div className="p-4 rounded-lg bg-tertiary-container/30 border-l-4 border-tertiary">
+                <p className="text-body-sm text-on-surface">
+                  ✓ 改写后已通过痕迹检测。请点击「应用到正文」后才会写入章节。
                 </p>
               </div>
             )}
@@ -1397,21 +1437,44 @@ export default function ChapterEditorPage() {
                     <pre className="mt-1 px-2 py-1 rounded bg-surface-container-lowest text-body-xs font-mono text-on-surface-variant whitespace-pre-wrap break-all">
                       {f.snippet}
                     </pre>
-                    {editorRewrites[i] && editorRewrites[i].rewritten !== editorRewrites[i].original && (
-                      <div className="mt-2 p-2 rounded bg-tertiary-fixed/30">
+                    <Button
+                      size="small"
+                      type="link"
+                      className="px-0"
+                      onClick={() => {
+                        setEditorModalOpen(false);
+                        const ok = editorRef.current?.selectSnippet(f.snippet);
+                        if (!ok) message.info('未在正文中定位到该片段');
+                      }}
+                    >
+                      定位正文
+                    </Button>
+                    {editorRewrites
+                      .filter((r) => r.category === f.category && r.rewritten !== r.original)
+                      .map((r, ri) => (
+                      <div key={`${f.category}-${ri}`} className="mt-2 p-2 rounded bg-tertiary-fixed/30">
                         <div className="text-label-xs text-on-surface-variant mb-1">改写后:</div>
                         <p className="text-body-sm text-on-surface whitespace-pre-wrap">
-                          {editorRewrites[i].rewritten}
+                          {r.rewritten}
                         </p>
-                        {editorRewrites[i].reason && (
+                        {r.reason && (
                           <p className="text-body-xs text-on-surface-variant mt-1 italic">
-                            理由: {editorRewrites[i].reason}
+                            理由: {r.reason}
                           </p>
                         )}
                       </div>
-                    )}
+                    ))}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {editorPolishedText && (
+              <div className="p-3 rounded-lg bg-surface-container-low">
+                <div className="text-label-md text-on-surface-variant mb-1">润色后预览</div>
+                <div className="whitespace-pre-wrap text-body-sm text-on-surface leading-7">
+                  {normalizeNovelParagraphs(editorPolishedText)}
+                </div>
               </div>
             )}
 
@@ -1559,6 +1622,18 @@ export default function ChapterEditorPage() {
                     <pre className="mt-1 px-2 py-1 rounded bg-surface-container-lowest text-body-xs font-mono text-on-surface-variant whitespace-pre-wrap break-all">
                       {f.snippet}
                     </pre>
+                    <Button
+                      size="small"
+                      type="link"
+                      className="px-0"
+                      onClick={() => {
+                        setSelectionPolishOpen(false);
+                        const ok = editorRef.current?.selectSnippet(f.snippet);
+                        if (!ok) message.info('未在正文中定位到该片段');
+                      }}
+                    >
+                      定位正文
+                    </Button>
                     {selectionPolishRewrites[i] && selectionPolishRewrites[i].rewritten !== selectionPolishRewrites[i].original && (
                       <div className="mt-2 p-2 rounded bg-tertiary-fixed/30">
                         <div className="text-label-xs text-on-surface-variant mb-1">改写后:</div>
@@ -1580,9 +1655,9 @@ export default function ChapterEditorPage() {
             {selectionPolishedText && (
               <div className="p-3 rounded-lg bg-surface-container-low">
                 <div className="text-label-md text-on-surface-variant mb-1">改写后全文:</div>
-                <pre className="whitespace-pre-wrap text-body-sm text-on-surface font-mono">
-                  {selectionPolishedText}
-                </pre>
+                <div className="whitespace-pre-wrap text-body-sm text-on-surface leading-7">
+                  {normalizeNovelParagraphs(selectionPolishedText)}
+                </div>
               </div>
             )}
 

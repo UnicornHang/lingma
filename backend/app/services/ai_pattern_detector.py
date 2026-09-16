@@ -65,9 +65,11 @@ class PatternFinding:
     snippet: str
     message: str
     rule: str = ""
+    # 密度类规则的全部命中区间;普通规则为空,展开重写时用
+    hits: list[tuple[int, int]] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "category": self.category,
             "severity": self.severity.value,
             "start": self.start,
@@ -76,6 +78,9 @@ class PatternFinding:
             "message": self.message,
             "rule": self.rule,
         }
+        if self.hits:
+            payload["hits"] = [{"start": s, "end": e} for s, e in self.hits]
+        return payload
 
 
 # ==================== 工具函数 ====================
@@ -129,6 +134,27 @@ def _snippet(text: str, start: int, end: int, *, max_chars: int = 60) -> str:
         return raw
     half = max_chars // 2
     return raw[:half] + "…" + raw[-half:]
+
+
+_SENTENCE_BREAK = frozenset("。！？!?；;\n")
+
+
+def enclosing_sentence(text: str, start: int, end: int) -> tuple[int, int]:
+    """把 [start, end) 扩到最近的句界,供密度类按整句改写。"""
+    n = len(text)
+    if n == 0:
+        return 0, 0
+    start = max(0, min(start, n))
+    end = max(start, min(end, n))
+    left = start
+    while left > 0 and text[left - 1] not in _SENTENCE_BREAK:
+        left -= 1
+    right = end
+    while right < n and text[right] not in _SENTENCE_BREAK:
+        right += 1
+    if right < n and text[right] in _SENTENCE_BREAK:
+        right += 1
+    return left, right
 
 
 # ==================== 检测器主类 ====================
@@ -324,23 +350,45 @@ class AIPatternDetector:
             for m in self._RE_VOICE_CONTRAST.finditer(text)
         ]
 
-    def _detect_em_dash(self, text: str) -> list[PatternFinding]:
-        hits = list(self._RE_EM_DASH.finditer(text))
-        if len(hits) < self.EM_DASH_MIN_HITS:
-            return []
-        # 一次性报一条聚合 finding,指向首个 em-dash
-        first = hits[0]
+    def _aggregate_density_finding(
+        self,
+        text: str,
+        *,
+        category: str,
+        severity: Severity,
+        hits: list[tuple[int, int]],
+        message: str,
+        rule: str,
+    ) -> list[PatternFinding]:
+        """密度类只展示一条 finding,但 snippet 必须是正文可定位片段,hits 保留全部位置。"""
+        first_start, first_end = hits[0]
+        sent_s, sent_e = enclosing_sentence(text, first_start, first_end)
+        snippet = text[sent_s:sent_e] or text[first_start:first_end]
         return [
             PatternFinding(
-                category="em-dash-density",
-                severity=Severity.BLOCKING,
-                start=first.start(),
-                end=first.end(),
-                snippet=f"共 {len(hits)} 处 ——",
-                message=f"破折号 —— 全文出现 {len(hits)} 次,提示按功能改写",
-                rule=f"em-dash count ≥ {self.EM_DASH_MIN_HITS}",
+                category=category,
+                severity=severity,
+                start=first_start,
+                end=first_end,
+                snippet=snippet,
+                message=message,
+                rule=rule,
+                hits=list(hits),
             )
         ]
+
+    def _detect_em_dash(self, text: str) -> list[PatternFinding]:
+        matches = list(self._RE_EM_DASH.finditer(text))
+        if len(matches) < self.EM_DASH_MIN_HITS:
+            return []
+        return self._aggregate_density_finding(
+            text,
+            category="em-dash-density",
+            severity=Severity.BLOCKING,
+            hits=[(m.start(), m.end()) for m in matches],
+            message=f"破折号 —— 全文出现 {len(matches)} 次,提示按功能改写",
+            rule=f"em-dash count ≥ {self.EM_DASH_MIN_HITS}",
+        )
 
     def _detect_trailer_ending(self, text: str) -> list[PatternFinding]:
         # 章尾窗口
@@ -388,53 +436,40 @@ class AIPatternDetector:
                 )
         if len(hits) < self.MICRO_ACTION_MIN_HITS:
             return []
-        # 报聚合 finding
-        first = hits[0]
-        return [
-            PatternFinding(
-                category="micro-action-tic",
-                severity=Severity.ADVISORY,
-                start=first.start,
-                end=first.end,
-                snippet=f"共 {len(hits)} 处 `了+下/阵/圈…`",
-                message=f"微动作复读(了+下/阵/圈/道),{len(hits)} 处,提示电报体风险",
-                rule=f"micro-action count ≥ {self.MICRO_ACTION_MIN_HITS}",
-            )
-        ]
+        return self._aggregate_density_finding(
+            text,
+            category="micro-action-tic",
+            severity=Severity.ADVISORY,
+            hits=[(h.start, h.end) for h in hits],
+            message=f"微动作复读(了+下/阵/圈/道),{len(hits)} 处,提示电报体风险",
+            rule=f"micro-action count ≥ {self.MICRO_ACTION_MIN_HITS}",
+        )
 
     def _detect_stock_reaction_tic(self, text: str) -> list[PatternFinding]:
-        hits = list(self._RE_STOCK_REACTION.finditer(text))
-        if len(hits) < self.STOCK_REACTION_MIN_HITS:
+        matches = list(self._RE_STOCK_REACTION.finditer(text))
+        if len(matches) < self.STOCK_REACTION_MIN_HITS:
             return []
-        first = hits[0]
-        return [
-            PatternFinding(
-                category="stock-reaction-tic",
-                severity=Severity.ADVISORY,
-                start=first.start(),
-                end=first.end(),
-                snippet=f"共 {len(hits)} 处身体部位+轻量动作",
-                message=f"套式反应细节(指节/嘴角/喉结+轻轻/微微/攥紧),{len(hits)} 处,提示审视",
-                rule=f"stock-reaction count ≥ {self.STOCK_REACTION_MIN_HITS}",
-            )
-        ]
+        return self._aggregate_density_finding(
+            text,
+            category="stock-reaction-tic",
+            severity=Severity.ADVISORY,
+            hits=[(m.start(), m.end()) for m in matches],
+            message=f"套式反应细节(指节/嘴角/喉结+轻轻/微微/攥紧),{len(matches)} 处,提示审视",
+            rule=f"stock-reaction count ≥ {self.STOCK_REACTION_MIN_HITS}",
+        )
 
     def _detect_abstract_summary_tic(self, text: str) -> list[PatternFinding]:
-        hits = list(self._RE_ABSTRACT_SUMMARY.finditer(text))
-        if len(hits) < self.ABSTRACT_SUMMARY_MIN_HITS:
+        matches = list(self._RE_ABSTRACT_SUMMARY.finditer(text))
+        if len(matches) < self.ABSTRACT_SUMMARY_MIN_HITS:
             return []
-        first = hits[0]
-        return [
-            PatternFinding(
-                category="abstract-summary-tic",
-                severity=Severity.ADVISORY,
-                start=first.start(),
-                end=first.end(),
-                snippet=f"共 {len(hits)} 处抽象总结",
-                message=f"抽象总结复读(命运/这一刻终于明白/如同棋局),{len(hits)} 处,提示审视",
-                rule=f"abstract-summary count ≥ {self.ABSTRACT_SUMMARY_MIN_HITS}",
-            )
-        ]
+        return self._aggregate_density_finding(
+            text,
+            category="abstract-summary-tic",
+            severity=Severity.ADVISORY,
+            hits=[(m.start(), m.end()) for m in matches],
+            message=f"抽象总结复读(命运/这一刻终于明白/如同棋局),{len(matches)} 处,提示审视",
+            rule=f"abstract-summary count ≥ {self.ABSTRACT_SUMMARY_MIN_HITS}",
+        )
 
 
 # ==================== 便捷函数 ====================

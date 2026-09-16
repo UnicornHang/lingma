@@ -38,6 +38,15 @@ def test_build_system_prompt_includes_target_words():
     assert "本章目标" in out
 
 
+def test_build_system_prompt_requires_paragraphs_and_forbids_ai_tics():
+    """续写必须分段，并禁止不是A是B、章尾鸡汤。"""
+    out = build_system_prompt(target_words=1500)
+    assert "空行分段" in out
+    assert "不是A，是B" in out
+    assert "命运的齿轮" in out
+    assert "对话单独成段" in out
+
+
 def test_build_user_prompt_generate_mode_no_existing_tail():
     """generate 模式（无 existing_tail）应输出原始提示词"""
     prompt = build_user_prompt(

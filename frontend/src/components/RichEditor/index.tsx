@@ -16,6 +16,8 @@ import {
   Redo2,
 } from 'lucide-react';
 
+import { plainToTipTapDoc } from '@/utils/plainToTipTap';
+
 /**
  * TipTap JSON 文档的最小类型约定。
  * 真正的 TipTap JSON schema 是开放结构，这里只声明我们关心的部分。
@@ -37,11 +39,13 @@ export interface TipTapDoc {
  * 暴露给父组件的命令式句柄 —— 用于 AI 流式生成时实时插入 chunk
  */
 export interface RichEditorHandle {
-  /** 在光标位置插入纯文本/HTML,返回是否成功。允许在 read-only 文档上调用 */
+  /** 在光标位置插入纯文本。换行会拆成新段落，不走 HTML 空白折叠。 */
   insertContent: (text: string) => boolean;
-  /** 整体替换编辑器内容(用于 done 兜底:用后端清洗后的 content 强制覆盖) */
+  /** 整体替换为纯文本（自动切段） */
   setContent: (text: string) => boolean;
-  /** 获取当前纯文本 */
+  /** 当前 TipTap JSON */
+  getJSON: () => TipTapDoc | null;
+  /** 获取当前纯文本（段间空行） */
   getText: () => string;
   /** 聚焦编辑器 */
   focus: () => void;
@@ -52,6 +56,10 @@ export interface RichEditorHandle {
   replaceRange: (from: number, to: number, text: string) => boolean;
   /** 获取光标所在自然段:{from, to, text}。无段落返回 null */
   getCurrentParagraph: () => { from: number; to: number; text: string } | null;
+  /** 光标前后各 radius 字，墙式长段检测时用 */
+  getCursorWindow: (radius?: number) => { from: number; to: number; text: string } | null;
+  /** 在正文中定位片段并选中 */
+  selectSnippet: (snippet: string) => boolean;
 }
 
 interface RichEditorProps {
@@ -108,23 +116,25 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(function
     ref,
     () => ({
       insertContent: (text: string) => {
-        if (!editor) return false;
-        // TipTap 允许在 read-only 文档上做程序化编辑(commands.insertContent)
-        editor.commands.insertContent(text);
+        if (!editor || !text) return false;
+        // 按换行拆段，避免 TipTap 把 \n 当 HTML 空白吃掉
+        const parts = text.split('\n');
+        parts.forEach((part, i) => {
+          if (i > 0) editor.commands.splitBlock();
+          if (part) editor.commands.insertContent(part);
+        });
         return true;
       },
       setContent: (text: string) => {
         if (!editor) return false;
-        // 整体替换 —— 用于 done 兜底,把可能含污染的内容替换为后端清洗后的版本
-        // false 表示不触发 onUpdate(避免自身引发的更新又被 status effect 当 dirty 触发额外保存)
-        editor.commands.setContent(text, false);
+        editor.commands.setContent(plainToTipTapDoc(text), false);
         return true;
       },
-      getText: () => editor?.getText() ?? '',
+      getJSON: () => (editor ? (editor.getJSON() as TipTapDoc) : null),
+      getText: () => editor?.getText({ blockSeparator: '\n\n' }) ?? '',
       focus: () => {
         editor?.commands.focus('end');
       },
-      // [提交 D] 选区/段落级操作
       getSelection: () => {
         if (!editor) return null;
         const { from, to } = editor.state.selection;
@@ -134,13 +144,16 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(function
       },
       replaceRange: (from: number, to: number, text: string) => {
         if (!editor) return false;
-        // insertContentAt 在 from===to 时等价于纯插入,正常返回 true
-        return editor.chain().focus().insertContentAt({ from, to }, text).run();
+        // 无换行时当行内替换，避免把短句包成新段打乱光标
+        if (!text.includes('\n')) {
+          return editor.chain().focus().insertContentAt({ from, to }, text).run();
+        }
+        const nodes = plainToTipTapDoc(text).content ?? [];
+        return editor.chain().focus().insertContentAt({ from, to }, nodes).run();
       },
       getCurrentParagraph: () => {
         if (!editor) return null;
         const { from } = editor.state.selection;
-        // 解析光标位置,向上找最近的 block 节点(paragraph/heading)
         const $pos = editor.state.doc.resolve(from);
         for (let depth = $pos.depth; depth > 0; depth--) {
           const node = $pos.node(depth);
@@ -153,6 +166,32 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(function
           }
         }
         return null;
+      },
+      getCursorWindow: (radius = 220) => {
+        if (!editor) return null;
+        const { from } = editor.state.selection;
+        const size = editor.state.doc.content.size;
+        const start = Math.max(1, from - radius);
+        const end = Math.min(size, from + radius);
+        if (start >= end) return null;
+        const text = editor.state.doc.textBetween(start, end, '\n', '\n');
+        return { from: start, to: end, text };
+      },
+      selectSnippet: (snippet: string) => {
+        if (!editor || !snippet.trim()) return false;
+        const needle = snippet.trim().slice(0, 24);
+        let found = false;
+        editor.state.doc.descendants((node, pos) => {
+          if (found || !node.isText || !node.text) return true;
+          const idx = node.text.indexOf(needle);
+          if (idx < 0) return true;
+          const from = pos + idx;
+          const to = Math.min(pos + idx + snippet.trim().length, pos + node.text.length);
+          editor.chain().focus().setTextSelection({ from, to }).scrollIntoView().run();
+          found = true;
+          return false;
+        });
+        return found;
       },
     }),
     [editor]

@@ -16,12 +16,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.base import BaseAgent
+from app.agents.character_agent import _strip_llm_think
 from app.prompts.editor_prompts import (
     build_editor_system_prompt,
     build_editor_user_prompt,
@@ -30,6 +31,7 @@ from app.services.ai_pattern_detector import (
     AIPatternDetector,
     PatternFinding,
     Severity,
+    enclosing_sentence,
     summarize as summarize_findings,
 )
 from app.services import prompt_template_service
@@ -39,9 +41,19 @@ from app.services.llm_service import (
     LLMRequest,
     ProviderConfig,
     get_llm_service,
+    thinking_extra_body,
 )
+from app.services.novel_text import is_leaked_rewrite, normalize_novel_paragraphs
 
 logger = logging.getLogger(__name__)
+
+# 密度类 finding 在 UI 上聚合为 1 条,改写时必须按含痕迹的整句展开
+_DENSITY_CATEGORIES = frozenset({
+    "em-dash-density",
+    "micro-action-tic",
+    "stock-reaction-tic",
+    "abstract-summary-tic",
+})
 
 
 _JSON_FENCE_RE = re.compile(r"```(?:json|JSON)?\s*([\s\S]*?)```", re.DOTALL)
@@ -51,7 +63,7 @@ def _extract_json_object(raw: str) -> str | None:
     """尽力从 LLM 输出中抽取首个 JSON object。"""
     if not raw:
         return None
-    text = raw.strip()
+    text = _strip_llm_think(raw).strip()
     m = _JSON_FENCE_RE.search(text)
     if m:
         return m.group(1).strip()
@@ -110,14 +122,23 @@ class PolishResult:
     polished_text: str  # 把原文按 finding 顺序逐条替换后的成品
     summary: str
     stats: dict
+    remaining: list[PatternFinding] = field(default_factory=list)
 
     def to_dict(self) -> dict:
+        remaining = self.remaining
         return {
             "findings": [f.to_dict() for f in self.findings],
             "rewrites": [r.to_dict() for r in self.rewrites],
             "polished_text": self.polished_text,
             "summary": self.summary,
             "stats": self.stats,
+            "remaining_findings": [f.to_dict() for f in remaining],
+            "remaining_blocking_count": sum(
+                1 for f in remaining if f.severity == Severity.BLOCKING
+            ),
+            "remaining_advisory_count": sum(
+                1 for f in remaining if f.severity == Severity.ADVISORY
+            ),
         }
 
 
@@ -200,11 +221,13 @@ class EditorAgent(BaseAgent):
             return PolishResult(
                 findings=[],
                 rewrites=[],
-                polished_text=text,
+                polished_text=normalize_novel_paragraphs(text),
                 summary="未检测到 AI 痕迹,无需润色",
                 stats=summarize_findings([]),
+                remaining=[],
             )
 
+        rewrite_findings = self.expand_findings_for_rewrite(text, findings)
         system = await prompt_template_service.resolve_system_prompt(
             db,
             "editor",
@@ -212,7 +235,7 @@ class EditorAgent(BaseAgent):
         )
         user = build_editor_user_prompt(
             chapter_text=text,
-            findings=findings,
+            findings=rewrite_findings,
             style_keywords=style_keywords,
         )
         messages = [
@@ -226,6 +249,7 @@ class EditorAgent(BaseAgent):
             temperature=temperature,
             max_tokens=max_tokens,
             stream=False,
+            extra=thinking_extra_body(cfg, model_name),
         )
 
         rewrites: list[PolishRewrite] = []
@@ -234,7 +258,7 @@ class EditorAgent(BaseAgent):
         llm = get_llm_service()
         try:
             resp = await llm.chat(req, cfg)
-            raw = resp.content or ""
+            raw = _strip_llm_think(resp.content or "")
             json_text = _extract_json_object(raw)
             if json_text:
                 payload = json.loads(json_text)
@@ -247,6 +271,7 @@ class EditorAgent(BaseAgent):
                     )
                     for r in payload.get("rewrites", [])
                 ]
+                rewrites = EditorAgent._sanitize_rewrites(rewrites)
                 summary = str(payload.get("summary", summary))
             else:
                 logger.warning(
@@ -257,17 +282,80 @@ class EditorAgent(BaseAgent):
             logger.warning("EditorAgent polish: LLM 失败或解析失败,降级为仅报告 (%s)", exc)
             summary = f"LLM 失败({exc.__class__.__name__}),已返回原文 + findings 报告"
 
-        polished = self._apply_rewrites(text, findings, rewrites)
+        polished = self._apply_rewrites(text, rewrite_findings, rewrites)
+        remaining = self._detector.detect(polished) if polished else []
 
         return PolishResult(
             findings=findings,
             rewrites=rewrites,
             polished_text=polished,
             summary=summary,
-            stats=summarize_findings(findings),
+            stats=summarize_findings(remaining or findings),
+            remaining=remaining,
         )
 
     # ==================== 工具方法 ====================
+
+    @staticmethod
+    def expand_findings_for_rewrite(
+        text: str, findings: list[PatternFinding]
+    ) -> list[PatternFinding]:
+        """把密度类聚合 finding 展开为「每一处所在整句」,供 LLM 逐句改写。
+
+        同一句里多次命中只保留一条,避免重复替换把整句打烂。
+        非密度类 finding 原样返回。
+        """
+        if not text or not findings:
+            return list(findings)
+
+        expanded: list[PatternFinding] = []
+        seen: set[tuple[str, int, int]] = set()
+        for f in findings:
+            hits = f.hits if f.hits else [(f.start, f.end)]
+            if f.category not in _DENSITY_CATEGORIES or len(hits) <= 1:
+                expanded.append(f)
+                continue
+            for hit_start, hit_end in hits:
+                sent_s, sent_e = enclosing_sentence(text, hit_start, hit_end)
+                key = (f.category, sent_s, sent_e)
+                if key in seen:
+                    continue
+                seen.add(key)
+                snippet = text[sent_s:sent_e]
+                if not snippet:
+                    continue
+                expanded.append(
+                    PatternFinding(
+                        category=f.category,
+                        severity=f.severity,
+                        start=sent_s,
+                        end=sent_e,
+                        snippet=snippet,
+                        message=f.message,
+                        rule=f.rule,
+                        hits=[(hit_start, hit_end)],
+                    )
+                )
+        expanded.sort(key=lambda item: item.start)
+        return expanded
+
+    @staticmethod
+    def _sanitize_rewrites(rewrites: list[PolishRewrite]) -> list[PolishRewrite]:
+        """占位符/提示词泄漏视为未改写，避免写进正文。"""
+        cleaned: list[PolishRewrite] = []
+        for r in rewrites:
+            rewritten = r.rewritten
+            if is_leaked_rewrite(rewritten):
+                rewritten = r.original
+            cleaned.append(
+                PolishRewrite(
+                    category=r.category,
+                    original=r.original,
+                    rewritten=rewritten,
+                    reason=r.reason,
+                )
+            )
+        return cleaned
 
     @staticmethod
     def _apply_rewrites(
@@ -278,34 +366,59 @@ class EditorAgent(BaseAgent):
         """按 finding 顺序,把 rewrites[i].rewritten 替换进 original。
 
         替换策略:
-        - 优先按 snippet 精确匹配替换;匹配不到则按 [start:end] 区间替换
-        - rewrites[i].rewritten == rewrites[i].original 时,视为"无需改写",原样保留
+        - 优先按 [start:end] 区间替换(倒序,避免 offset 漂移)
+        - 区间对不上时,再按 original/snippet 精确匹配
+        - rewrites[i].rewritten == rewrites[i].original 时,视为"无需改写"
+        - 提示词占位 rewritten 跳过
         - 任一 finding 替换失败 → 跳过该条,继续后续
-
-        注意:区间替换必须按 start 倒序处理,避免前序替换影响后续 offset。
         """
-        if not findings or not rewrites:
+        if not original:
             return original
+        if not findings or not rewrites:
+            return normalize_novel_paragraphs(original)
 
-        # 按 start 倒序处理,避免 offset 漂移
+        pair_count = min(len(findings), len(rewrites))
         indexed = sorted(
-            zip(findings, rewrites), key=lambda pair: pair[0].start, reverse=True
+            zip(findings[:pair_count], rewrites[:pair_count]),
+            key=lambda pair: pair[0].start,
+            reverse=True,
         )
         text = original
         applied = 0
         for f, r in indexed:
-            if not r.rewritten or r.rewritten == r.original:
+            rewritten = (r.rewritten or "").strip()
+            if not rewritten or rewritten == r.original or is_leaked_rewrite(rewritten):
                 continue
             replaced = False
-            # 1) 按 snippet 全文精确匹配
-            if r.original and r.original in text:
-                text = text.replace(r.original, r.rewritten, 1)
-                replaced = True
-            else:
-                # 2) 按 finding 的 start:end 区间替换
-                if 0 <= f.start < f.end <= len(text):
-                    text = text[: f.start] + r.rewritten + text[f.end :]
+            if 0 <= f.start < f.end <= len(text):
+                span = text[f.start:f.end]
+                if span == f.snippet or (r.original and span == r.original):
+                    text = text[: f.start] + rewritten + text[f.end :]
                     replaced = True
+                elif r.original and r.original in span:
+                    local = span.replace(r.original, rewritten, 1)
+                    if local != span:
+                        text = text[: f.start] + local + text[f.end :]
+                        replaced = True
+            if not replaced:
+                needle = ""
+                if r.original and r.original in text:
+                    needle = r.original
+                elif f.snippet and f.snippet in text:
+                    needle = f.snippet
+                if needle:
+                    needle_len = len(needle)
+                    if (
+                        0 <= f.start <= len(text) - needle_len
+                        and text[f.start : f.start + needle_len] == needle
+                    ):
+                        text = text[: f.start] + rewritten + text[f.start + needle_len :]
+                        replaced = True
+                    else:
+                        idx = text.find(needle)
+                        if idx >= 0:
+                            text = text[:idx] + rewritten + text[idx + needle_len :]
+                            replaced = True
             if replaced:
                 applied += 1
         if applied:
@@ -314,7 +427,7 @@ class EditorAgent(BaseAgent):
                 applied,
                 len(findings),
             )
-        return text
+        return normalize_novel_paragraphs(text)
 
 
 # ==================== 工厂 ====================

@@ -254,6 +254,7 @@ export interface PatternFinding {
   snippet: string;
   message: string;
   rule: string;
+  hits?: Array<{ start: number; end: number }>;
 }
 
 export interface AnalyzeAIPatternsResponse {
@@ -287,6 +288,9 @@ export interface PolishChapterResponse {
   polished_text: string;
   summary: string;
   stats: AnalyzeAIPatternsResponse['stats'];
+  remaining_findings?: PatternFinding[];
+  remaining_blocking_count?: number;
+  remaining_advisory_count?: number;
 }
 
 // ============ [P2] Critic 评审精简版(WS done 事件 + chapter.latestCritic 用) ============
@@ -362,6 +366,9 @@ export interface PolishStreamDonePayload {
   rewrites: PolishRewrite[];
   summary: string;
   stats: AnalyzeAIPatternsResponse['stats'];
+  remaining_findings?: PatternFinding[];
+  remaining_blocking_count?: number;
+  remaining_advisory_count?: number;
 }
 
 export interface PolishStreamErrorPayload {

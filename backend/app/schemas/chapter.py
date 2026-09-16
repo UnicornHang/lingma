@@ -163,6 +163,8 @@ class ChapterVersionListResponse(BaseModel):
 class PatternFindingRead(BaseModel):
     """单条 AI 痕迹命中"""
 
+    model_config = ConfigDict(extra="ignore")
+
     category: str = Field(..., description="类别短码(neg-pos-flip, trailer-summary …)")
     severity: str = Field(..., description="blocking | advisory")
     start: int = Field(..., description="起始字符偏移(半开区间)")
@@ -213,3 +215,6 @@ class PolishChapterResponse(BaseModel):
     polished_text: str = Field(..., description="应用改写后的全文(若 LLM 失败则等于原文)")
     summary: str
     stats: dict[str, Any] = Field(default_factory=dict)
+    remaining_findings: list[PatternFindingRead] = Field(default_factory=list)
+    remaining_blocking_count: int = 0
+    remaining_advisory_count: int = 0

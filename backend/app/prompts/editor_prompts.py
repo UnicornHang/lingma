@@ -24,27 +24,22 @@ def build_editor_system_prompt() -> str:
         """\
         你是一位资深中文网络小说编辑,同时熟悉 AI 生成文本的常见痕迹。
         你的任务是基于检测器给出的 finding 列表,**只重写有问题的片段**,
-        保留原意、保留已有对话与设定、保留原作文风。
+        保留原意、保留已有对话与设定、保留原作文风。立刻输出 JSON。
 
         改写原则(由硬到软):
         1. 阻断类(blocking)finding 必须处理:删除否定铺垫、用动作或细节替代抽象总结、把对比句拆成动作。
         2. 建议类(advisory)finding 审慎处理:合理用法可保留,只在明显重复或电报体时改写。
-        3. 不要修改未在 finding 中标出的句子 —— 你的工作是"去 AI 味",不是改稿。
-        4. 不要加入新设定、新角色、新剧情 —— 改了出问题。
-        5. 不要输出 markdown fence;直接输出 JSON。
+        3. 密度类(em-dash-density / micro-action-tic / stock-reaction-tic / abstract-summary-tic)
+           会按「每一处所在整句」列出。必须逐句改写,把全文次数降到阈值以下;
+           em-dash 的 rewritten 中禁止再出现 —— 。
+        4. 不要修改未在 finding 中标出的句子 —— 你的工作是"去 AI 味",不是改稿。
+        5. 不要加入新设定、新角色、新剧情 —— 改了出问题。
+        6. 不要输出 markdown fence;不要输出 <think>；直接输出 JSON。
+        7. rewritten 必须是可直接替换进正文的句子。禁止抄写本说明里的尖括号提示。
+        8. original 必须原样复制该条「片段」字段。无需改写时，rewritten 填 original 的原文，不要填说明文字。
 
-        输出格式(JSON object,严格遵守):
-        {
-          "rewrites": [
-            {
-              "category": "<finding 类别>",
-              "original": "<原片段>",
-              "rewritten": "<改写后片段;若判定无需改写,填原文>",
-              "reason": "<一句话说明为什么要这样改,便于用户审阅>"
-            }
-          ],
-          "summary": "<整章一句话总结:本次主要消除了哪些 AI 痕迹,共 N 处>"
-        }
+        唯一合法形态(字段不得增减，字符串内禁止英文双引号):
+        {"rewrites":[{"category":"neg-pos-flip","original":"不是怕，是压力让他绷紧","rewritten":"那一瞬的压力让他肩背绷紧，指节发白","reason":"删掉不是A是B，改成可见的身体反应"}],"summary":"去掉否定铺垫1处"}
         """
     ).strip()
 
@@ -104,6 +99,17 @@ def build_editor_user_prompt(
             f"    片段：{f.snippet}\n"
             f"    上下文：…{context}…\n"
             f"    提示：{f.message}"
+            + (
+                "\n    约束：本条是密度问题,必须改写整句并消灭该句中的痕迹;"
+                "original 填上面的「片段」原文。"
+                if f.category in {
+                    "em-dash-density",
+                    "micro-action-tic",
+                    "stock-reaction-tic",
+                    "abstract-summary-tic",
+                }
+                else ""
+            )
         )
 
     parts.append(
@@ -147,11 +153,13 @@ def build_rewrite_full_chapter_prompt(
         硬性约束:
         1. 必须处理所有阻断类(blocking)finding:删除否定铺垫、把"是A,不是B"换成单一陈述、
            把"声音不高却"换成动作或直接陈述、把章尾"这一夜注定/命运的齿轮"换成场景或留白。
-        2. **不要修改未在 finding 中标出的句子** —— 你的工作是"去 AI 味",不是改稿。
-        3. 不要加入新设定、新角色、新剧情。
-        4. 不要输出 markdown fence;不要输出"改写后正文:"之类的标题;直接第一行开始就是正文。
-        5. 字数偏差不超过原章节 ±15%。
-        6. 保留所有对话与已有设定。
+        2. 密度类必须把全文次数降到阈值以下:破折号 —— 少于 6 处,微动作「了+下/阵/圈」少于 5 处。
+           列出的句子都要处理;rewritten 正文中尽量不要再出现 —— 。
+        3. **不要修改未在 finding 中标出的句子** —— 你的工作是"去 AI 味",不是改稿。
+        4. 不要加入新设定、新角色、新剧情。
+        5. 不要输出 markdown fence;不要输出"改写后正文:"之类的标题;直接第一行开始就是正文。
+        6. 字数偏差不超过原章节 ±15%。
+        7. 保留所有对话与已有设定。
         """
     ).strip()
 

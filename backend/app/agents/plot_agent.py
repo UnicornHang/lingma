@@ -25,7 +25,6 @@ from app.agents.plot_outline_parse import (
     parse_one_volume,
     parse_outline_volumes,
 )
-from app.models.api_config import Provider
 from app.models.outline import OutlineNode, OutlineNodeType
 from app.models.work import Work
 from app.prompts.plot_prompts import (
@@ -50,6 +49,7 @@ from app.services.llm_service import (
     ProviderConfig,
     get_llm_service,
     resolve_provider_config,
+    thinking_extra_body,
 )
 
 logger = logging.getLogger(__name__)
@@ -182,11 +182,7 @@ class PlotAgent(BaseAgent):
 
     def _thinking_extra(self, cfg: ProviderConfig | None, model_name: str) -> dict | None:
         """MiniMax-M3 默认开启 think，会把 max_tokens 吃在思考上导致 JSON 写不完。"""
-        model = (model_name or "").lower()
-        provider = cfg.provider if cfg is not None else None
-        if provider == Provider.MINIMAX or "minimax" in model:
-            return {"thinking": {"type": "disabled"}}
-        return None
+        return thinking_extra_body(cfg, model_name)
 
     async def generate_outline(
         self,

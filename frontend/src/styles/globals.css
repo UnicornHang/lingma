@@ -467,3 +467,9 @@ code {
   background: var(--color-primary-container);
   color: var(--color-on-primary-container);
 }
+
+/* 章节正文：自然段间距，避免墙式一块 */
+.rich-editor .ProseMirror p {
+  margin: 0.85em 0;
+  line-height: 1.85;
+}

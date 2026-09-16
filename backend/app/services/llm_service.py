@@ -63,6 +63,15 @@ class ProviderConfig:
     cost_per_1k_output: float = 0.0
 
 
+def thinking_extra_body(cfg: ProviderConfig | None, model_name: str = "") -> dict[str, Any] | None:
+    """MiniMax 默认开 thinking，正文/JSON 任务必须关掉，否则会吞 token 或把提示词抄进正文。"""
+    model = (model_name or (cfg.model if cfg else "") or "").lower()
+    provider = cfg.provider if cfg is not None else None
+    if provider == Provider.MINIMAX or "minimax" in model:
+        return {"thinking": {"type": "disabled"}}
+    return None
+
+
 # ==================== 错误 ====================
 
 

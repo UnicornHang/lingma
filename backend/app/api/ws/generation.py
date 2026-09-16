@@ -36,6 +36,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
+from app.agents.editor_agent import EditorAgent
 from app.agents.writer_agent import WriterAgent
 from app.db.session import async_session_factory
 from app.models.chapter import Chapter, ChapterStatus, ChapterVersion
@@ -54,7 +55,9 @@ from app.services.llm_service import (
     ProviderConfig,
     get_llm_service,
     resolve_provider_config,
+    thinking_extra_body,
 )
+from app.services.novel_text import normalize_novel_paragraphs, plain_to_tiptap_doc
 
 logger = logging.getLogger(__name__)
 
@@ -296,9 +299,10 @@ async def _handle_start(
                 req = LLMRequest(
                     messages=override_messages,
                     model=data.get("model", cfg.model if cfg else "mock"),
-                    temperature=float(data.get("temperature", 0.85)),
+                    temperature=float(data.get("temperature", 0.72)),
                     max_tokens=int(data.get("max_tokens", 2048)),
                     stream=True,
+                    extra=thinking_extra_body(cfg, cfg.model if cfg else ""),
                 )
                 prompt_used = "(override:client_messages)"
             elif chapter_id is None:
@@ -331,7 +335,7 @@ async def _handle_start(
                 req = LLMRequest(
                     messages=messages,
                     model=data.get("model", cfg.model if cfg else model_name),
-                    temperature=float(data.get("temperature", 0.85)),
+                    temperature=float(data.get("temperature", 0.72)),
                     # [P2 修复] max_tokens 跟随 target_word_count 走,避免中文字数估算不足
                     # - 中文字符 ≈ 1.5 tokens/字,加 thinking block 余量约 × 2.0
                     # - max(WS 传入值, target_word_count × 2.0) 防止前端硬编码过小
@@ -340,6 +344,7 @@ async def _handle_start(
                         target_word_count=target_word_count,
                     ),
                     stream=True,
+                    extra=thinking_extra_body(cfg, cfg.model if cfg else model_name),
                 )
                 prompt_used = prompt_text
 
@@ -513,6 +518,10 @@ async def _handle_start(
                 }
 
     # ===== 完成态落库 =====
+    if not error_msg and full_content:
+        full_content = normalize_novel_paragraphs(
+            _strip_think_blocks(full_content, drop_prefix=existing_baseline)
+        )
     model_used = cfg.model if cfg else "mock"
     async with async_session_factory() as db:
         task = await _load_task(db, task_id)
@@ -625,9 +634,10 @@ async def _auto_polish_if_needed(
 
     # ===== 阶段 2:LLM 整章重写 =====
     base_report["rewrite_attempted"] = True
+    rewrite_findings = EditorAgent.expand_findings_for_rewrite(text, findings)
     system, user = build_rewrite_full_chapter_prompt(
         chapter_text=text,
-        findings=findings,
+        findings=rewrite_findings,
         style_keywords=style_keywords,
     )
     model_name = cfg.model if cfg else "mock"
@@ -637,6 +647,7 @@ async def _auto_polish_if_needed(
         temperature=0.5,
         max_tokens=4096,
         stream=False,
+        extra=thinking_extra_body(cfg, model_name),
     )
     llm = get_llm_service()
     try:
@@ -746,18 +757,10 @@ async def _finalize_chapter(db, chapter_id: uuid.UUID, full_content: str) -> Non
     ch = r.scalar_one_or_none()
     if not ch:
         return
-    clean = _strip_think_blocks(full_content)
+    clean = normalize_novel_paragraphs(_strip_think_blocks(full_content))
     ch.plain_content = clean
     ch.word_count = count_words(clean)
-    ch.content = {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [{"type": "text", "text": clean}],
-            }
-        ],
-    }
+    ch.content = plain_to_tiptap_doc(clean)
     ch.status = ChapterStatus.GENERATED
     ch.version = (ch.version or 0) + 1
     await db.commit()
@@ -831,29 +834,7 @@ async def _finalize_chapter_continuation(
 
 def _split_plain_to_tiptap_doc(plain: str) -> dict:
     """把纯文本切段,生成 TipTap doc({type:doc, content:[paragraph...]})。"""
-    if not plain:
-        return {"type": "doc", "content": []}
-    blocks: list[str] = []
-    current: list[str] = []
-    for line in plain.split("\n"):
-        if line.strip() == "":
-            if current:
-                blocks.append("\n".join(current))
-                current = []
-        else:
-            current.append(line)
-    if current:
-        blocks.append("\n".join(current))
-    return {
-        "type": "doc",
-        "content": [
-            {
-                "type": "paragraph",
-                "content": [{"type": "text", "text": block}],
-            }
-            for block in blocks
-        ],
-    }
+    return plain_to_tiptap_doc(plain)
 
 
 # 思维链 / 推理痕迹剥离器 — 部分推理型 LLM(MiniMax / DeepSeek-R1 / Qwen-QwQ)

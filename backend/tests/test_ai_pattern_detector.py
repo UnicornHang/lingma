@@ -81,6 +81,16 @@ def test_em_dash_density_hit():
     assert any(f.category == "em-dash-density" for f in findings)
 
 
+def test_em_dash_density_snippet_exists_in_text():
+    """密度 finding 的 snippet 必须是正文里能定位到的真实片段,不能是「共 N 处」摘要。"""
+    text = "他——她——它——你——我——他——她——它——终于停下来了。"
+    findings = AIPatternDetector().detect(text)
+    finding = next(f for f in findings if f.category == "em-dash-density")
+    assert finding.snippet in text
+    assert not finding.snippet.startswith("共 ")
+    assert len(finding.hits) >= 6
+
+
 def test_em_dash_density_miss_under_threshold():
     text = "他说——还有吗?她说没了。"
     findings = AIPatternDetector().detect(text)
@@ -125,6 +135,19 @@ def test_micro_action_tic_hit():
     )
     findings = AIPatternDetector().detect(text)
     assert any(f.category == "micro-action-tic" for f in findings)
+
+
+def test_micro_action_tic_snippet_exists_in_text():
+    """微动作密度 snippet 必须能在正文中定位,并带上全部命中位置。"""
+    text = (
+        "他看了一眼桌子,点了一下头,挪了一下身子,"
+        "皱了一下眉头,抿了一下嘴,转了一下身。"
+    )
+    findings = AIPatternDetector().detect(text)
+    finding = next(f for f in findings if f.category == "micro-action-tic")
+    assert finding.snippet in text
+    assert not finding.snippet.startswith("共 ")
+    assert len(finding.hits) >= 5
 
 
 def test_micro_action_tic_miss_under_threshold():
@@ -279,3 +302,89 @@ def test_editor_agent_polish_no_findings():
     assert result.findings == []
     assert result.rewrites == []
     assert "未检测到" in result.summary
+
+
+def test_editor_agent_skips_placeholder_rewrite():
+    """模型把 JSON 样例抄进 rewritten 时不得写入正文。"""
+    from app.agents.editor_agent import EditorAgent, PolishRewrite
+    from app.services.ai_pattern_detector import PatternFinding, Severity
+
+    text = "不是怕，是压力让他绷紧。"
+    finding = PatternFinding(
+        category="neg-pos-flip",
+        severity=Severity.BLOCKING,
+        start=0,
+        end=len(text),
+        snippet=text,
+        message="否定铺垫",
+        rule="test",
+    )
+    leaked = PolishRewrite(
+        category="neg-pos-flip",
+        original=text,
+        rewritten="<改写后片段;若判定无需改写,填原文>",
+        reason="x",
+    )
+    out = EditorAgent._apply_rewrites(text, [finding], [leaked])
+    assert "改写后片段" not in out
+    assert "压力" in out
+
+
+def test_expand_density_findings_splits_by_sentence():
+    """密度类必须按「含痕迹的整句」展开,否则 LLM 只改第一处,其余破折号仍超阈值。"""
+    from app.agents.editor_agent import EditorAgent
+
+    text = "甲——一。乙——二。丙——三。丁——四。戊——五。己——六。"
+    findings = AIPatternDetector().detect(text)
+    expanded = EditorAgent.expand_findings_for_rewrite(text, findings)
+    dash_findings = [f for f in expanded if f.category == "em-dash-density"]
+    assert len(dash_findings) == 6
+    for f in dash_findings:
+        assert f.snippet in text
+        assert "——" in f.snippet
+
+
+def test_apply_rewrites_clears_em_dash_density():
+    """逐句替换后,破折号密度必须降到阈值以下。"""
+    from app.agents.editor_agent import EditorAgent, PolishRewrite
+
+    text = "甲——一。乙——二。丙——三。丁——四。戊——五。己——六。"
+    findings = AIPatternDetector().detect(text)
+    expanded = EditorAgent.expand_findings_for_rewrite(text, findings)
+    rewrites = [
+        PolishRewrite(
+            category=f.category,
+            original=f.snippet,
+            rewritten=f.snippet.replace("——", "，"),
+            reason="按功能改写破折号",
+        )
+        for f in expanded
+    ]
+    out = EditorAgent._apply_rewrites(text, expanded, rewrites)
+    remaining = AIPatternDetector().detect(out)
+    assert not any(f.category == "em-dash-density" for f in remaining)
+    assert "——" not in out
+
+
+def test_apply_rewrites_clears_micro_action_tic():
+    """微动作复读必须改掉全部命中句,不能只替换第一处。"""
+    from app.agents.editor_agent import EditorAgent, PolishRewrite
+
+    text = (
+        "他看了一眼桌子。点了一下头。挪了一下身子。"
+        "皱了一下眉头。抿了一下嘴。转了一下身。"
+    )
+    findings = AIPatternDetector().detect(text)
+    expanded = EditorAgent.expand_findings_for_rewrite(text, findings)
+    rewrites = [
+        PolishRewrite(
+            category=f.category,
+            original=f.snippet,
+            rewritten=f.snippet.replace("了一眼", "向").replace("了一下", "了"),
+            reason="去掉微动作复读",
+        )
+        for f in expanded
+    ]
+    out = EditorAgent._apply_rewrites(text, expanded, rewrites)
+    remaining = AIPatternDetector().detect(out)
+    assert not any(f.category == "micro-action-tic" for f in remaining)

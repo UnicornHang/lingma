@@ -47,6 +47,7 @@ from app.services.llm_service import (
     LLMRequest,
     get_llm_service,
     resolve_provider_config,
+    thinking_extra_body,
 )
 
 logger = logging.getLogger(__name__)
@@ -298,6 +299,13 @@ async def polish_chapter_endpoint(
         polished_text=result.polished_text,
         summary=result.summary,
         stats=result.stats,
+        remaining_findings=[PatternFindingRead(**f.to_dict()) for f in result.remaining],
+        remaining_blocking_count=sum(
+            1 for f in result.remaining if f.severity.value == "blocking"
+        ),
+        remaining_advisory_count=sum(
+            1 for f in result.remaining if f.severity.value == "advisory"
+        ),
     )
 
 
@@ -370,12 +378,17 @@ async def polish_chapter_stream_endpoint(
         # 无 findings → 直接 done,跳过 LLM
         if not findings:
             yield _sse("done", {
-                "polished_text": text,
+                "polished_text": agent._apply_rewrites(text, [], []),
                 "rewrites": [],
                 "summary": "未检测到 AI 痕迹,无需润色",
                 "stats": stats,
+                "remaining_findings": [],
+                "remaining_blocking_count": 0,
+                "remaining_advisory_count": 0,
             })
             return
+
+        rewrite_findings = agent.expand_findings_for_rewrite(text, findings)
 
         # ===== 阶段 2:流式 LLM 改写 =====
         yield _sse("llm_started", {"model": cfg.model if cfg else "mock"})
@@ -387,7 +400,7 @@ async def polish_chapter_stream_endpoint(
         )
         user = build_editor_user_prompt(
             chapter_text=text,
-            findings=findings,
+            findings=rewrite_findings,
             style_keywords=style_keywords,
         )
         req = LLMRequest(
@@ -399,6 +412,7 @@ async def polish_chapter_stream_endpoint(
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True,
+            extra=thinking_extra_body(cfg, cfg.model if cfg else "mock"),
         )
 
         llm = get_llm_service()
@@ -441,6 +455,7 @@ async def polish_chapter_stream_endpoint(
                     )
                     for r in payload_json.get("rewrites", [])
                 ]
+                rewrites = agent._sanitize_rewrites(rewrites)
                 summary = str(payload_json.get("summary", summary))
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning("polish stream: JSON 解析失败(%s)", e)
@@ -451,13 +466,19 @@ async def polish_chapter_stream_endpoint(
             )
             summary = "LLM 输出非 JSON,已返回原文 + findings 报告"
 
-        polished = agent._apply_rewrites(text, findings, rewrites)
+        polished = agent._apply_rewrites(text, rewrite_findings, rewrites)
+        remaining = agent._detector.detect(polished) if polished else []
+        remaining_blocking = sum(1 for f in remaining if f.severity.value == "blocking")
+        remaining_advisory = sum(1 for f in remaining if f.severity.value == "advisory")
 
         yield _sse("done", {
             "polished_text": polished,
             "rewrites": [r.to_dict() for r in rewrites],
             "summary": summary,
-            "stats": stats,
+            "stats": summarize_findings(remaining),
+            "remaining_findings": [f.to_dict() for f in remaining],
+            "remaining_blocking_count": remaining_blocking,
+            "remaining_advisory_count": remaining_advisory,
         })
 
     return StreamingResponse(

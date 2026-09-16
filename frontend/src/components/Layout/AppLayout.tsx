@@ -186,7 +186,7 @@ export function AppLayout() {
       {/* ===== Main column ===== */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header 64px */}
-        <header className="app-header">
+        <header className="app-header"> 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1 text-on-surface-variant text-label-md">
               {breadcrumb.map((b, i) => (
