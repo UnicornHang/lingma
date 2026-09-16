@@ -2,11 +2,11 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
-import { chaptersApi } from '@/api/chapters';
+import { chaptersApi, type Chapter } from '@/api/chapters';
 import { useCurrentWorkStore } from '@/stores/useCurrentWorkStore';
 
-/** 从 /works/:id 或 /editor/:chapterId 同步当前作品。 */
-export function useSyncCurrentWork() {
+/** 从 /works/:id 或 /editor/:chapterId 同步当前作品，并返回路径上的章节（供顶栏面包屑用名称）。 */
+export function useSyncCurrentWork(): { currentChapter: Chapter | null } {
   const { pathname } = useLocation();
   const setCurrentWorkId = useCurrentWorkStore((s) => s.setCurrentWorkId);
 
@@ -27,6 +27,8 @@ export function useSyncCurrentWork() {
     const workId = chapterQuery.data?.work_id;
     if (workId) setCurrentWorkId(workId);
   }, [chapterQuery.data?.work_id, setCurrentWorkId]);
+
+  return { currentChapter: chapterQuery.data ?? null };
 }
 
 /** 解析 /works/{uuid}，排除 /works/new。 */

@@ -33,7 +33,7 @@ export function AppLayout() {
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const currentWorkId = useCurrentWorkStore((s) => s.currentWorkId);
 
-  useSyncCurrentWork();
+  const { currentChapter } = useSyncCurrentWork();
 
   const workQuery = useQuery({
     queryKey: ['work', currentWorkId],
@@ -53,8 +53,11 @@ export function AppLayout() {
     { segment: 'world' as const, icon: Globe, label: '世界观圣经' },
   ];
 
-  // 面包屑（从 path 推断）
-  const breadcrumb = deriveBreadcrumb(location.pathname);
+  // 面包屑：路径段用中文名，UUID 换成作品/章节标题
+  const breadcrumb = deriveBreadcrumb(location.pathname, {
+    workTitle: currentWork?.title,
+    chapterTitle: currentChapter?.title,
+  });
 
   return (
     <div className="app-shell">
@@ -189,7 +192,10 @@ export function AppLayout() {
               {breadcrumb.map((b, i) => (
                 <span key={i} className="flex items-center gap-1">
                   {i > 0 && <span className="text-outline">/</span>}
-                  <span className={i === breadcrumb.length - 1 ? 'text-on-surface font-semibold' : ''}>
+                  <span
+                    className={`max-w-[280px] truncate ${i === breadcrumb.length - 1 ? 'text-on-surface font-semibold' : ''}`}
+                    title={b}
+                  >
                     {b}
                   </span>
                 </span>
@@ -259,7 +265,14 @@ function isSettingNavActive(
   return new RegExp(`^/works/(?!new(?:/|$))[^/]+/${segment}(?:/|$)`).test(pathname);
 }
 
-function deriveBreadcrumb(pathname: string): string[] {
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 路径里的 UUID 用作品名或章节名替换，避免顶栏露出 id。 */
+function deriveBreadcrumb(
+  pathname: string,
+  names: { workTitle?: string; chapterTitle?: string },
+): string[] {
   const map: Record<string, string> = {
     '': '启动页',
     'works': '作品库',
@@ -284,6 +297,11 @@ function deriveBreadcrumb(pathname: string): string[] {
   let acc = '';
   for (const s of segments) {
     acc += '/' + s;
+    if (UUID_RE.test(s)) {
+      const lbl = acc.startsWith('/editor/') ? names.chapterTitle : names.workTitle;
+      if (lbl && !trail.includes(lbl)) trail.push(lbl);
+      continue;
+    }
     const lbl = map[s] ?? map[acc.slice(1)] ?? s;
     if (!trail.includes(lbl)) trail.push(lbl);
   }

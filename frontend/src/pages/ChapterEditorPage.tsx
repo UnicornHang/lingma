@@ -802,7 +802,7 @@ export default function ChapterEditorPage() {
 
       {/* Editor (center) */}
       <section className="flex-1 h-full overflow-y-auto bg-surface-container-low">
-        <div className="max-w-[880px] mx-auto px-8 py-8">
+        <div className="w-full px-4 py-5">
           {/* Breadcrumb + title */}
           <div className="flex items-center gap-2 text-on-surface-variant text-label-md mb-2">
             <span>{flatChapters.find((c) => c.id === outlineNodeId)?.volumeTitle || '—'}</span>
@@ -824,7 +824,7 @@ export default function ChapterEditorPage() {
           </div>
 
           {/* Toolbar (TipTap's own toolbar is inside RichEditor; here we keep meta + AI button) */}
-          <div className="flex items-center gap-2 p-1 mt-4 bg-surface-container-lowest rounded-lg border border-outline-variant/40 shadow-L1-card flex-wrap">
+          <div className="flex items-center gap-1 p-1 mt-4 bg-surface-container-lowest rounded-lg border border-outline-variant/40 shadow-L1-card flex-nowrap overflow-x-auto min-w-0">
             <Button
               type="primary"
               ghost
@@ -870,16 +870,15 @@ export default function ChapterEditorPage() {
             >
               本段检测
             </Button>
-            <span className="px-2 py-1 text-body-sm text-on-surface-variant">提示词</span>
-
             {/* [P4] 版本下拉 */}
-            <span className="px-2 py-1 text-body-sm text-on-surface-variant flex items-center gap-1">
+            <span className="px-1 py-1 text-body-sm text-on-surface-variant flex items-center gap-1 shrink-0">
               <History size={14} className="text-outline" />
               版本
             </span>
             <Select
               size="small"
-              style={{ minWidth: 200 }}
+              className="shrink-0"
+              style={{ minWidth: 132, width: 148 }}
               value={`v${chapter?.version ?? 1} (当前)`}
               onChange={(value) => {
                 const row = versionRows.find((r) => `${r.kind}:${r.versionNo}` === value);
@@ -908,7 +907,7 @@ export default function ChapterEditorPage() {
                 取消
               </Button>
             )}
-            <span className="ml-auto px-2 py-1 text-body-sm text-on-surface-variant inline-flex items-center gap-1">
+            <span className="ml-auto px-2 py-1 text-body-sm text-on-surface-variant inline-flex items-center gap-1 whitespace-nowrap shrink-0">
               {saving ? (
                 <>
                   <Loader2 size={14} className="animate-spin" /> 保存中…
@@ -982,7 +981,7 @@ export default function ChapterEditorPage() {
       </section>
 
       {/* Right Co-pilot panel (460px) */}
-      <aside className="w-[460px] flex-shrink-0 h-full bg-surface-container-lowest border-l border-outline-variant/30 overflow-y-auto">
+      <aside className="w-[360px] flex-shrink-0 h-full bg-surface-container-lowest border-l border-outline-variant/30 overflow-y-auto">
         <div className="px-6 py-3 border-b border-outline-variant/30 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Bot size={20} className="text-primary" />
