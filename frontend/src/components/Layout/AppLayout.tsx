@@ -21,7 +21,7 @@ import { useSyncCurrentWork } from '@/hooks/useSyncCurrentWork';
 import { useCurrentWorkStore } from '@/stores/useCurrentWorkStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { formatWordCount } from '@/utils/format';
-import logoHeader from '../../images/logo.png';
+import logoHeader from '../../images/logo.svg';
 
 const BOTTOM_NAV = [
   { to: '/settings', icon: SettingsIcon, label: '系统设置' },
@@ -73,7 +73,7 @@ export function AppLayout() {
                 <img
                   src={logoHeader}
                   alt="织梦"
-                  className="w-full h-full object-contain"
+                  className="w-8 h-8 object-contain"
                 />
               </div>
             </div>

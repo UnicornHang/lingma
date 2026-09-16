@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, FileText, Shield, ShieldCheck } from 'lucide-react';
-import logo from '../images/logo.png';
+import logo from '../images/logo.svg';
 
 export default function HomePage() {
   return (
@@ -15,12 +15,17 @@ export default function HomePage() {
       />
 
       <div className="flex flex-col items-center text-center max-w-[820px] px-8 relative z-10">
-        {/* Logo with glow */}
-        <div className="relative">
-          <div className="absolute inset-0 rounded-3xl bg-primary/20 blur-2xl" />
-          <div className="relative h-24 w-24 rounded-3xl bg-white flex items-center justify-center shadow-[0_8px_32px_rgba(5,150,105,0.35)] overflow-hidden">
-            <img src={logo} alt="织梦 ZhiMeng" className="h-full w-full object-contain" />
-          </div>
+        {/* 透明底 Logo：去掉白底方块，用柔光托住水彩轮廓 */}
+        <div className="relative flex items-center justify-center">
+          <div
+            className="absolute h-28 w-40 rounded-full bg-primary/25 blur-3xl"
+            aria-hidden
+          />
+          <img
+            src={logo}
+            alt="织梦 ZhiMeng"
+            className="relative h-28 w-auto select-none drop-shadow-[0_12px_28px_rgba(5,150,105,0.28)]"
+          />
         </div>
 
         <h1 className="text-display font-bold tracking-tight mt-8 bg-gradient-to-r from-[#00685f] via-[#059669] to-[#10b981] bg-clip-text text-transparent">
