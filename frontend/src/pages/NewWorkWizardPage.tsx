@@ -223,9 +223,9 @@ export default function NewWorkWizardPage() {
   const prev = () => setStep((s) => Math.max(0, s - 1));
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-auto p-6">
-      {/* Modal */}
-      <div className="bg-surface-container-lowest rounded-2xl shadow-L3-modal w-full max-w-[1120px] max-h-[920px] overflow-hidden flex flex-col my-auto">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-hidden p-6">
+      {/* Modal：高度锁在视口内，正文区域自行滚动 */}
+      <div className="bg-surface-container-lowest rounded-2xl shadow-L3-modal w-full max-w-[1120px] max-h-[min(920px,calc(100vh-48px))] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-8 py-4 border-b border-outline-variant/30">
           <div className="flex flex-col gap-1">

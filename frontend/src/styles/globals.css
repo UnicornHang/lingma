@@ -135,6 +135,73 @@ select:focus-visible {
 /* antd override — Select / Input active border already set in main.tsx */
 
 /* ============================================================
+   Ant Design Modal：视口内垂直居中，内容过长时内部滚动
+   ============================================================ */
+.ant-modal-wrap {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden !important;
+}
+
+/* 关闭 antd centered 的 ::before 占位，避免与 flex 居中叠出空白 */
+.ant-modal-centered::before {
+  display: none !important;
+}
+
+.ant-modal {
+  top: 0 !important;
+  padding-bottom: 0 !important;
+  margin: 0 !important;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+}
+
+.ant-modal .ant-modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+}
+
+.ant-modal .ant-modal-header,
+.ant-modal .ant-modal-footer {
+  flex-shrink: 0;
+}
+
+.ant-modal .ant-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+/* Confirm：按钮钉在底部，只有正文区域滚动 */
+.ant-modal-confirm .ant-modal-body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.ant-modal-confirm .ant-modal-confirm-body-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.ant-modal-confirm .ant-modal-confirm-body {
+  overflow-y: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+.ant-modal-confirm .ant-modal-confirm-btns {
+  flex-shrink: 0;
+}
+
+/* ============================================================
    Typography helpers (对标 Fresh Emerald Studio v0.2)
    ============================================================ */
 .font-display     { font-weight: 700; }

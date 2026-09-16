@@ -929,8 +929,6 @@ function LLMSettings() {
         okText={editing ? '保存' : '创建'}
         cancelText="取消"
         destroyOnClose
-        centered={false}
-        style={{ top: 24 }}
         width={560}
       >
         <ApiConfigForm form={form} isEdit={!!editing} />

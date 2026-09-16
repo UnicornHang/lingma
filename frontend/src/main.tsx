@@ -185,7 +185,7 @@ const theme = {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ConfigProvider locale={zhCN} theme={theme}>
+      <ConfigProvider locale={zhCN} theme={theme} modal={{ centered: true }}>
         <AntdApp>
           <BrowserRouter>
             <App />
